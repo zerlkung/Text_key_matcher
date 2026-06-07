@@ -15,7 +15,7 @@
 
 ```
 ┌─────────────────────────────────────────────┐
-│  🔑  Key Matcher                            │
+│  🔑  Key Matcher              [🌙 Dark]     │
 ├─────────────────────────────────────────────┤
 │  📁  เลือกไฟล์                               │
 │  Base:   [PC_eng.common.txt]  [📂 Browse]   │
@@ -42,8 +42,11 @@
 
 ### ภาษาไทย
 
-1. ติดตั้ง Python 3.8 ขึ้นไป (ถ้ายังไม่มี → [python.org](https://python.org))
-2. ดาวน์โหลด `key_matcher_gui.py`
+1. ติดตั้ง Python 3.8 ขึ้นไป + CustomTkinter:
+   ```bash
+   pip install customtkinter
+   ```
+2. ดาวน์โหลด `key_matcher_gui.py` และ `orange.json` (ไว้โฟลเดอร์เดียวกัน)
 3. รัน:
    ```bash
    python key_matcher_gui.py
@@ -53,12 +56,16 @@
 6. ตั้งค่า format และ delimiter ให้ถูกต้อง (auto-detect จากนามสกุลไฟล์)
 7. *(ไม่บังคับ)* พิมพ์ key เพิ่มเองในช่อง "เพิ่ม Key เอง"
 8. กด **🔍 MATCH & PREVIEW** เพื่อดูผล
-9. กด **💾 SAVE** เพื่อบันทึกไฟล์ใหม่ (ชื่อไฟล์ขึ้นให้อัตโนมัติ: `ชื่อเดิม_matched.นามสกุล`)
+9. กด **💾 SAVE** — ชื่อไฟล์ขึ้นอัตโนมัติ `ชื่อเดิม_matched.นามสกุล`
+10. สลับ Dark/Light ได้ที่มุมขวาบน ☀🌙
 
 ### English
 
-1. Install Python 3.8+ ([python.org](https://python.org))
-2. Download `key_matcher_gui.py`
+1. Install Python 3.8+ + CustomTkinter:
+   ```bash
+   pip install customtkinter
+   ```
+2. Download `key_matcher_gui.py` and `orange.json` (same folder)
 3. Run:
    ```bash
    python key_matcher_gui.py
@@ -66,9 +73,10 @@
 4. Select **Base** file (reference keys)
 5. Select **Target** file (source of replacement values)
 6. Set format + delimiter (auto-detected from file extension)
-7. *(Optional)* Add manual keys in the manual keys field
+7. *(Optional)* Add manual keys
 8. Click **🔍 MATCH & PREVIEW** to see results
 9. Click **💾 SAVE** — filename auto-generates as `original_matched.ext`
+10. Toggle Dark/Light mode at top-right corner ☀🌙
 
 ---
 
@@ -114,9 +122,10 @@ id,text
 ## ⚙ ความต้องการ / Requirements
 
 - **Python** 3.8 ขึ้นไป
-- **ไม่มี dependency อื่น** — ใช้ `tkinter` ที่มากับ Python อยู่แล้ว
+- **CustomTkinter** (`pip install customtkinter`)
 - รองรับ Windows / macOS / Linux
 - Encoding: `utf-8` (default), `utf-8-sig`, `utf-16`, `cp874`, `tis-620`, `latin-1`
+- Theme: `orange.json` (CTkThemesPack)
 
 ---
 
