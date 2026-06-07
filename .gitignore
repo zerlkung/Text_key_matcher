@@ -1,0 +1,25 @@
+# Project config
+CLAUDE.md
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Test files
+test_files/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temp .txt at root (not part of source)
+PC_eng.common.txt
+PS4_.common.txt
