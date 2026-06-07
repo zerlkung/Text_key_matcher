@@ -23,3 +23,4 @@ Thumbs.db
 # Temp .txt at root (not part of source)
 PC_eng.common.txt
 PS4_.common.txt
+*_matched.txt

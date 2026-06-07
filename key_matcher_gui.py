@@ -2,43 +2,17 @@
 """
 Key Matcher GUI — จับคู่ key-value ระหว่าง 2 ไฟล์
 รองรับ .txt .csv .json .xml
+Built with CustomTkinter + orange theme
 """
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+import customtkinter as ctk
+from tkinter import filedialog, messagebox
 from collections import OrderedDict
 import csv
 import json
 import xml.etree.ElementTree as ET
 import os
 import re
-
-# ═══════════════════════════════════════════════════════════
-# Dark theme palette — สบายตา อ่านชัด
-# ═══════════════════════════════════════════════════════════
-
-BG_MAIN      = "#13141f"   # พื้นหลังหลัก
-BG_CARD      = "#1c1d2e"   # พื้นการ์ด
-BG_HEADER    = "#0f1019"   # แถบหัว
-FG_HEADER    = "#e4e6f0"
-ACCENT       = "#7c8cf8"   # ม่วง-น้ำเงิน (ปุ่มหลัก)
-ACCENT_HOVER = "#96a5ff"
-SUCCESS      = "#4ade80"   # เขียว
-WARNING      = "#fbbf24"   # เหลือง
-DANGER       = "#f87171"   # แดง
-TEXT_MAIN    = "#d4d6e2"   # ข้อความหลัก
-TEXT_MUTED   = "#7f82a0"   # ข้อความรอง
-TEXT_HINT    = "#5b5e7a"   # ข้อความจาง
-BORDER       = "#2e3048"   # เส้นขอบ
-PREVIEW_BG   = "#11121d"   # พื้น preview
-PREVIEW_FG   = "#cdd6f4"   # ข้อความ preview
-STATUS_BG    = "#171824"   # แถบสถานะ
-ENTRY_BG     = "#232439"   # พื้น input
-ENTRY_FG     = "#d4d6e2"   # ข้อความ input
-
-FONT_UI      = ("Segoe UI", 10)
-FONT_UI_BOLD = ("Segoe UI", 10, "bold")
-FONT_MONO    = ("Cascadia Code", 10)
 
 # ═══════════════════════════════════════════════════════════
 # Parsers
@@ -71,9 +45,8 @@ def parse_csv_file(path, key_col=0, val_col=1, delimiter=",", has_header=True, e
             next(reader, None)
         for row in reader:
             if len(row) > max(key_col, val_col):
-                key = row[key_col].strip()
-                val = row[val_col].strip() if len(row) > val_col else ""
-                result[key] = val
+                result[row[key_col].strip()] = (
+                    row[val_col].strip() if len(row) > val_col else "")
     return result
 
 def write_csv_file(data, path, key_header="key", val_header="value",
@@ -152,241 +125,200 @@ def match_keys(base_dict, target_dict):
     return result, matched, unmatched, len(base_dict)
 
 # ═══════════════════════════════════════════════════════════
-# GUI
+# GUI — CustomTkinter
 # ═══════════════════════════════════════════════════════════
+
+THEME_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "orange.json")
+
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme(THEME_FILE)
+
+# orange accent color (for progress bar tint, etc.)
+ACCENT      = "#FF8C42"
+ACCENT_DARK = "#FF6505"
+GREEN       = "#4ade80"
+YELLOW      = "#fbbf24"
+RED         = "#f87171"
+TEXT_TITLE  = "#DCE4EE"
+
+FONT_CARD   = ("Segoe UI", 12, "bold")
+FONT_MONO   = ("Cascadia Code", 10)
 
 class KeyMatcherApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Key Matcher")
-        self.root.geometry("1000x780")
-        self.root.minsize(720, 560)
-        self.root.configure(bg=BG_MAIN)
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(0, weight=1)
+        self.root.geometry("1020x800")
+        self.root.minsize(740, 580)
 
         # state
-        self.base_path = tk.StringVar()
-        self.target_path = tk.StringVar()
-        self.format_var = tk.StringVar(value="txt")
-        self.delimiter_var = tk.StringVar(value="|")
-        self.encoding_var = tk.StringVar(value="utf-8")
-        self.csv_key_col = tk.StringVar(value="0")
-        self.csv_val_col = tk.StringVar(value="1")
-        self.csv_has_header = tk.BooleanVar(value=True)
-        self.json_structure = tk.StringVar(value="array")
-        self.json_key_field = tk.StringVar(value="id")
-        self.json_val_field = tk.StringVar(value="value")
-        self.xml_item_tag = tk.StringVar(value="string")
-        self.xml_key_attr = tk.StringVar(value="id")
-        self.xml_val_attr = tk.StringVar(value="#text")
-        self.manual_keys = tk.StringVar()
+        self.base_path = ctk.StringVar()
+        self.target_path = ctk.StringVar()
+        self.format_var = ctk.StringVar(value="txt")
+        self.delimiter_var = ctk.StringVar(value="|")
+        self.encoding_var = ctk.StringVar(value="utf-8")
+        self.csv_key_col = ctk.StringVar(value="0")
+        self.csv_val_col = ctk.StringVar(value="1")
+        self.csv_has_header = ctk.BooleanVar(value=True)
+        self.json_structure = ctk.StringVar(value="array")
+        self.json_key_field = ctk.StringVar(value="id")
+        self.json_val_field = ctk.StringVar(value="value")
+        self.xml_item_tag = ctk.StringVar(value="string")
+        self.xml_key_attr = ctk.StringVar(value="id")
+        self.xml_val_attr = ctk.StringVar(value="#text")
+        self.manual_keys = ctk.StringVar()
         self.merged_data = None
 
-        self._setup_styles()
         self._build_ui()
 
-    # ── styles ────────────────────────────────────────
+    # ── helpers ───────────────────────────────────────
 
-    def _setup_styles(self):
-        style = ttk.Style()
-        style.theme_use("clam")
+    def _card(self, parent, title, **kwargs):
+        """สร้างการ์ด: CTkFrame พร้อม title label ด้านบน"""
+        card = ctk.CTkFrame(parent, corner_radius=8, border_width=1, **kwargs)
+        card.grid_columnconfigure(0, weight=1)
+        if title:
+            lbl = ctk.CTkLabel(card, text=title, font=FONT_CARD, text_color=ACCENT)
+            lbl.grid(row=0, column=0, sticky="w", padx=14, pady=(10, 4))
+        return card
 
-        # --- global defaults ---
-        style.configure(".", font=FONT_UI, background=BG_CARD, foreground=TEXT_MAIN,
-                        fieldbackground=ENTRY_BG, bordercolor=BORDER,
-                        troughcolor=BG_MAIN, arrowcolor=TEXT_MUTED)
-
-        # --- Card LabelFrame ---
-        style.configure("Card.TLabelframe", background=BG_CARD, bordercolor=BORDER,
-                        borderwidth=1, relief="solid", labelmargins=(10, 4))
-        style.configure("Card.TLabelframe.Label", font=FONT_UI_BOLD, foreground=ACCENT,
-                        background=BG_CARD)
-
-        # --- Entry ---
-        style.configure("TEntry", fieldbackground=ENTRY_BG, foreground=ENTRY_FG,
-                        bordercolor=BORDER, padding=5, relief="solid",
-                        insertcolor=ENTRY_FG, insertwidth=1)
-        style.map("TEntry", fieldbackground=[("focus", "#2a2c42")],
-                  bordercolor=[("focus", ACCENT)])
-
-        # --- Combobox ---
-        style.configure("TCombobox", fieldbackground=ENTRY_BG, foreground=ENTRY_FG,
-                        bordercolor=BORDER, arrowcolor=TEXT_MUTED, padding=4)
-        style.map("TCombobox", fieldbackground=[("focus", "#2a2c42"), ("readonly", ENTRY_BG)],
-                  bordercolor=[("focus", ACCENT)])
-
-        # override combobox dropdown colors via root
-        self.root.option_add("*TCombobox*Listbox.background", ENTRY_BG)
-        self.root.option_add("*TCombobox*Listbox.foreground", TEXT_MAIN)
-        self.root.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
-        self.root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
-        self.root.option_add("*TCombobox*Listbox.font", FONT_UI)
-
-        # --- Accent button (primary) ---
-        style.configure("Accent.TButton", font=FONT_UI_BOLD,
-                        background=ACCENT, foreground="#ffffff",
-                        bordercolor=ACCENT, borderwidth=0,
-                        padding=(22, 7), relief="flat")
-        style.map("Accent.TButton",
-                  background=[("active", ACCENT_HOVER), ("!disabled", ACCENT)],
-                  foreground=[("active", "#ffffff")])
-
-        # --- Secondary button (outline) ---
-        style.configure("Secondary.TButton", font=FONT_UI_BOLD,
-                        background=BG_CARD, foreground=ACCENT,
-                        bordercolor=ACCENT, borderwidth=1,
-                        padding=(18, 7), relief="solid")
-        style.map("Secondary.TButton",
-                  background=[("active", "#252740")],
-                  foreground=[("active", ACCENT_HOVER)])
-
-        # --- Small browse button ---
-        style.configure("Small.TButton", font=FONT_UI,
-                        background=BG_MAIN, foreground=TEXT_MAIN,
-                        bordercolor=BORDER, borderwidth=1,
-                        padding=(10, 5), relief="solid")
-        style.map("Small.TButton",
-                  background=[("active", "#252740")])
-
-        # --- Progress bar ---
-        style.configure("TProgressbar", background=SUCCESS, troughcolor=BG_MAIN,
-                        borderwidth=0, thickness=8)
-
-        # --- Checkbutton ---
-        style.configure("TCheckbutton", background=BG_CARD, foreground=TEXT_MAIN)
-        style.map("TCheckbutton", background=[("active", BG_CARD)])
-
-        # --- Label ---
-        style.configure("TLabel", background=BG_CARD, foreground=TEXT_MAIN)
-
-        # --- Separator ---
-        style.configure("TSeparator", background=BORDER)
-
-        # --- Vertical scrollbar ---
-        style.configure("Vertical.TScrollbar", background=BG_MAIN, troughcolor=BG_MAIN,
-                        bordercolor=BG_MAIN, arrowcolor=TEXT_MUTED, width=10)
-        style.map("Vertical.TScrollbar", background=[("active", BORDER)])
+    def _section_label(self, parent, text):
+        return ctk.CTkLabel(parent, text=text, font=("Segoe UI", 11),
+                            text_color=TEXT_TITLE).pack(anchor="w", padx=2, pady=(10, 2))
 
     # ── build ─────────────────────────────────────────
 
     def _build_ui(self):
-        p4 = {"padx": 6, "pady": 4}
+        # root grid — scrollable main
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
 
-        main = tk.Frame(self.root, bg=BG_MAIN)
-        main.grid(row=0, column=0, sticky="nsew")
+        main = ctk.CTkFrame(self.root, fg_color="transparent")
+        main.grid(row=0, column=0, sticky="nsew", padx=12, pady=(8, 8))
         main.grid_rowconfigure(5, weight=1)
         main.grid_columnconfigure(0, weight=1)
 
-        # ── header ──
-        header = tk.Frame(main, bg=BG_HEADER, height=52)
-        header.grid(row=0, column=0, sticky="ew")
-        header.grid_propagate(False)
-        header.grid_columnconfigure(1, weight=1)
+        # ── header bar ──
+        hbar = ctk.CTkFrame(main, corner_radius=8, fg_color=("gray20", "gray10"))
+        hbar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        hbar.grid_columnconfigure(1, weight=1)
 
-        tk.Label(header, text=" 🔑  Key Matcher", font=("Segoe UI", 14, "bold"),
-                 fg=FG_HEADER, bg=BG_HEADER).grid(row=0, column=0, padx=16, pady=10, sticky="w")
-        tk.Label(header, text="จับคู่ Key-Value ระหว่างไฟล์",
-                 font=FONT_UI, fg=TEXT_MUTED, bg=BG_HEADER).grid(row=0, column=1, padx=4, pady=10, sticky="w")
+        ctk.CTkLabel(hbar, text="🔑  Key Matcher",
+                     font=("Segoe UI", 16, "bold"),
+                     text_color=ACCENT).grid(row=0, column=0, padx=18, pady=12, sticky="w")
+        ctk.CTkLabel(hbar, text="จับคู่ Key-Value ระหว่างไฟล์",
+                     font=("Segoe UI", 10),
+                     text_color=("gray50", "gray60")).grid(row=0, column=1, padx=4, pady=12, sticky="w")
+
+        # dark/light switch
+        self.theme_switch = ctk.CTkSwitch(
+            hbar, text="🌙  Dark",
+            command=self._toggle_theme,
+            onvalue="dark", offvalue="light",
+            variable=ctk.StringVar(value="dark"))
+        self.theme_switch.grid(row=0, column=2, padx=(0, 14), pady=12)
+        self.theme_switch.select()  # start in dark mode
 
         # ── card: file selection ──
-        fcard = ttk.LabelFrame(main, text="📁  เลือกไฟล์", style="Card.TLabelframe", padding=10)
-        fcard.grid(row=1, column=0, sticky="ew", padx=12, pady=(10, 6))
-        fcard.grid_columnconfigure(1, weight=1)
+        fcard = self._card(main, "📁  เลือกไฟล์")
+        fcard.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        fcard.grid_columnconfigure(1, weight=1)  # entry column expands
+        p4 = {"padx": 6, "pady": 4}
 
-        ttk.Label(fcard, text="Base (อ้างอิง key):").grid(row=0, column=0, sticky="e", **p4)
-        ttk.Entry(fcard, textvariable=self.base_path).grid(row=0, column=1, sticky="ew", **p4)
-        ttk.Button(fcard, text="📂 Browse", style="Small.TButton",
-                   command=self._browse_base).grid(row=0, column=2, **p4)
+        ctk.CTkLabel(fcard, text="Base (อ้างอิง key):", width=130, anchor="e").grid(row=1, column=0, sticky="e", **p4)
+        ctk.CTkEntry(fcard, textvariable=self.base_path, height=34).grid(row=1, column=1, sticky="ew", **p4)
+        ctk.CTkButton(fcard, text="📂 Browse", width=90, height=34,
+                      command=self._browse_base).grid(row=1, column=2, padx=(6, 10), pady=4)
 
-        ttk.Label(fcard, text="Target (ดึง value):").grid(row=1, column=0, sticky="e", **p4)
-        ttk.Entry(fcard, textvariable=self.target_path).grid(row=1, column=1, sticky="ew", **p4)
-        ttk.Button(fcard, text="📂 Browse", style="Small.TButton",
-                   command=self._browse_target).grid(row=1, column=2, **p4)
+        ctk.CTkLabel(fcard, text="Target (ดึง value):", width=130, anchor="e").grid(row=2, column=0, sticky="e", **p4)
+        ctk.CTkEntry(fcard, textvariable=self.target_path, height=34).grid(row=2, column=1, sticky="ew", **p4)
+        ctk.CTkButton(fcard, text="📂 Browse", width=90, height=34,
+                      command=self._browse_target).grid(row=2, column=2, padx=(6, 10), pady=4)
 
         # ── card: format config ──
-        self.config_card = ttk.LabelFrame(main, text="⚙  ตั้งค่ารูปแบบไฟล์", style="Card.TLabelframe", padding=10)
-        self.config_card.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 6))
+        self.config_card = self._card(main, "⚙  ตั้งค่ารูปแบบไฟล์")
+        self.config_card.grid(row=2, column=0, sticky="ew", pady=(0, 6))
         self.config_card.grid_columnconfigure(5, weight=1)
 
-        ttk.Label(self.config_card, text="Format:").grid(row=0, column=0, sticky="w", **p4)
-        fmt_combo = ttk.Combobox(self.config_card, textvariable=self.format_var,
-                                 values=["txt", "csv", "json", "xml"], state="readonly", width=8)
-        fmt_combo.grid(row=0, column=1, sticky="w", **p4)
-        fmt_combo.bind("<<ComboboxSelected>>", lambda e: self._update_config_panel())
+        ctk.CTkLabel(self.config_card, text="Format:").grid(row=1, column=0, sticky="w", **p4)
+        ctk.CTkOptionMenu(self.config_card, variable=self.format_var,
+                          values=["txt", "csv", "json", "xml"], width=80,
+                          command=lambda _: self._update_config_panel()).grid(row=1, column=1, sticky="w", **p4)
 
-        ttk.Label(self.config_card, text="Delimiter:").grid(row=0, column=2, sticky="e", **p4)
-        self.delim_combo = ttk.Combobox(self.config_card, textvariable=self.delimiter_var,
-                                        values=["|", "=", ":", "\t", ",", " -> "], width=8)
-        self.delim_combo.grid(row=0, column=3, sticky="w", **p4)
+        ctk.CTkLabel(self.config_card, text="Delimiter:").grid(row=1, column=2, sticky="e", **p4)
+        self.delim_combo = ctk.CTkComboBox(self.config_card, variable=self.delimiter_var,
+                                           values=["|", "=", ":", "\t", ",", " -> "], width=90)
+        self.delim_combo.grid(row=1, column=3, sticky="w", **p4)
 
-        ttk.Label(self.config_card, text="Encoding:").grid(row=0, column=4, sticky="e", **p4)
-        ttk.Combobox(self.config_card, textvariable=self.encoding_var,
-                     values=["utf-8", "utf-8-sig", "utf-16", "cp874", "tis-620", "latin-1"],
-                     width=10).grid(row=0, column=5, sticky="w", **p4)
+        ctk.CTkLabel(self.config_card, text="Encoding:").grid(row=1, column=4, sticky="e", **p4)
+        ctk.CTkOptionMenu(self.config_card, variable=self.encoding_var,
+                          values=["utf-8", "utf-8-sig", "utf-16", "cp874", "tis-620", "latin-1"],
+                          width=100).grid(row=1, column=5, sticky="w", **p4)
 
         # dynamic sub-row
-        self.dynamic_frame = tk.Frame(self.config_card, bg=BG_CARD)
-        self.dynamic_frame.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(6, 0))
+        self.dynamic_frame = ctk.CTkFrame(self.config_card, fg_color="transparent")
+        self.dynamic_frame.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(8, 2))
         self._update_config_panel()
 
         # ── card: manual keys ──
-        mcard = ttk.LabelFrame(main, text="✚  เพิ่ม Key เอง (คั่นด้วย , ; หรือเว้นวรรค)", style="Card.TLabelframe", padding=10)
-        mcard.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 8))
+        mcard = self._card(main, "✚  เพิ่ม Key เอง")
+        mcard.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         mcard.grid_columnconfigure(0, weight=1)
-        ttk.Entry(mcard, textvariable=self.manual_keys).grid(row=0, column=0, sticky="ew")
+        ctk.CTkEntry(mcard, textvariable=self.manual_keys,
+                     placeholder_text="คั่นด้วย , ; หรือเว้นวรรค").grid(row=1, column=0, sticky="ew", padx=14, pady=(2, 10))
 
         # ── action bar ──
-        abar = tk.Frame(main, bg=BG_MAIN)
-        abar.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 4))
+        abar = ctk.CTkFrame(main, fg_color="transparent")
+        abar.grid(row=4, column=0, sticky="ew", pady=(0, 6))
         abar.grid_columnconfigure(3, weight=1)
 
-        ttk.Button(abar, text="🔍  MATCH & PREVIEW", style="Accent.TButton",
-                   command=self._do_match).grid(row=0, column=0, padx=(0, 8))
-        ttk.Button(abar, text="💾  SAVE", style="Secondary.TButton",
-                   command=self._do_save).grid(row=0, column=1, padx=(0, 16))
+        ctk.CTkButton(abar, text="🔍  MATCH & PREVIEW", width=180, height=36,
+                      font=("Segoe UI", 11, "bold"),
+                      command=self._do_match).grid(row=0, column=0, padx=(0, 8))
+        ctk.CTkButton(abar, text="💾  SAVE", width=120, height=36,
+                      font=("Segoe UI", 11, "bold"),
+                      fg_color="transparent", border_width=2,
+                      text_color=ACCENT, border_color=ACCENT,
+                      hover_color=(ACCENT, ACCENT_DARK),
+                      command=self._do_save).grid(row=0, column=1, padx=(0, 14))
 
-        self.progress = ttk.Progressbar(abar, mode="determinate", length=140)
+        self.progress = ctk.CTkProgressBar(abar, width=140, height=10, mode="determinate")
         self.progress.grid(row=0, column=2, padx=(0, 8))
+        self.progress.set(0)
 
-        self.stats_label = tk.Label(abar, text="", font=FONT_UI, fg=TEXT_MUTED,
-                                    bg=BG_MAIN, anchor="w")
-        self.stats_label.grid(row=0, column=3, sticky="ew")
+        self.stats_label = ctk.CTkLabel(abar, text="", font=("Segoe UI", 10),
+                                        text_color=("gray50", "gray60"))
+        self.stats_label.grid(row=0, column=3, sticky="w")
 
         # ── card: preview ──
-        pcard = ttk.LabelFrame(main, text="👁  Preview (50 บรรทัดแรก)", style="Card.TLabelframe", padding=10)
-        pcard.grid(row=5, column=0, sticky="nsew", padx=12, pady=(0, 8))
-        pcard.grid_rowconfigure(0, weight=1)
+        pcard = self._card(main, "👁  Preview (50 บรรทัดแรก)")
+        pcard.grid(row=5, column=0, sticky="nsew", pady=(0, 6))
+        pcard.grid_rowconfigure(1, weight=1)
         pcard.grid_columnconfigure(0, weight=1)
 
-        prev_container = tk.Frame(pcard, bg=PREVIEW_BG, highlightthickness=1,
-                                  highlightbackground=BORDER)
-        prev_container.grid(row=0, column=0, sticky="nsew")
-        prev_container.grid_rowconfigure(0, weight=1)
-        prev_container.grid_columnconfigure(0, weight=1)
-
-        self.preview_text = tk.Text(prev_container, font=FONT_MONO,
-                                    bg=PREVIEW_BG, fg=PREVIEW_FG,
-                                    insertbackground=PREVIEW_FG,
-                                    selectbackground="#3a3d5e", selectforeground=PREVIEW_FG,
-                                    wrap="char", state="disabled",
-                                    borderwidth=0, relief="flat",
-                                    padx=10, pady=8)
-        scroll_y = ttk.Scrollbar(prev_container, orient="vertical",
-                                 command=self.preview_text.yview)
-        self.preview_text.configure(yscrollcommand=scroll_y.set)
-        self.preview_text.grid(row=0, column=0, sticky="nsew")
-        scroll_y.grid(row=0, column=1, sticky="ns")
+        self.preview_text = ctk.CTkTextbox(pcard, font=FONT_MONO,
+                                           fg_color=("gray10", "#11121d"),
+                                           text_color=("#d4d6e2", "#cdd6f4"),
+                                           wrap="word", activate_scrollbars=True)
+        self.preview_text.grid(row=1, column=0, sticky="nsew", padx=14, pady=(2, 10))
+        self.preview_text.insert("0.0", "กด Match & Preview เพื่อดูผลลัพธ์\n")
+        self.preview_text.configure(state="disabled")
 
         # ── status bar ──
-        sbar = tk.Frame(main, bg=STATUS_BG, height=26)
+        sbar = ctk.CTkFrame(main, corner_radius=4, fg_color=("gray90", "gray13"))
         sbar.grid(row=6, column=0, sticky="ew")
-        sbar.grid_propagate(False)
-        self.status_label = tk.Label(sbar, text="✅  พร้อมใช้งาน", font=("Segoe UI", 9),
-                                     fg=TEXT_MUTED, bg=STATUS_BG, anchor="w")
-        self.status_label.pack(side="left", padx=12, pady=2)
+        self.status_label = ctk.CTkLabel(sbar, text="✅  พร้อมใช้งาน", font=("Segoe UI", 9),
+                                         text_color=("gray50", "gray60"))
+        self.status_label.pack(side="left", padx=14, pady=4)
 
-    # ── config panel switcher ─────────────────────────
+    # ── theme toggle ──────────────────────────────────
+
+    def _toggle_theme(self):
+        mode = self.theme_switch.get()
+        ctk.set_appearance_mode(mode)
+        self.theme_switch.configure(text="🌙  Dark" if mode == "dark" else "☀  Light")
+
+    # ── config panel ──────────────────────────────────
 
     def _update_config_panel(self):
         for w in self.dynamic_frame.winfo_children():
@@ -396,44 +328,48 @@ class KeyMatcherApp:
         p = {"padx": 4, "pady": 2}
 
         if fmt == "txt":
-            ttk.Label(self.dynamic_frame, text="Delimiter:").pack(side="left", **p)
-            ttk.Combobox(self.dynamic_frame, textvariable=self.delimiter_var,
-                         values=["|", "=", ":", "\t", ",", " -> ", "custom..."],
-                         width=10).pack(side="left", **p)
-            tk.Label(self.dynamic_frame, text="แยก key|value ด้วยตัวคั่นนี้",
-                     font=("Segoe UI", 9), fg=TEXT_HINT, bg=BG_CARD).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="Delimiter:").pack(side="left", **p)
+            ctk.CTkComboBox(self.dynamic_frame, variable=self.delimiter_var,
+                            values=["|", "=", ":", "\t", ",", " -> ", "custom..."],
+                            width=100).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="แยก key|value ด้วยตัวคั่นนี้",
+                         font=("Segoe UI", 9), text_color=("gray40", "gray60")).pack(side="left", **p)
 
         elif fmt == "csv":
-            ttk.Label(self.dynamic_frame, text="Delimiter:").pack(side="left", **p)
-            ttk.Combobox(self.dynamic_frame, textvariable=self.delimiter_var,
-                         values=[",", ";", "\t", "|"], width=6).pack(side="left", **p)
-            ttk.Separator(self.dynamic_frame, orient="vertical").pack(side="left", fill="y", padx=8)
-            ttk.Label(self.dynamic_frame, text="Key Col:").pack(side="left", **p)
-            ttk.Entry(self.dynamic_frame, textvariable=self.csv_key_col, width=4).pack(side="left", **p)
-            ttk.Label(self.dynamic_frame, text="Value Col:").pack(side="left", **p)
-            ttk.Entry(self.dynamic_frame, textvariable=self.csv_val_col, width=4).pack(side="left", **p)
-            ttk.Separator(self.dynamic_frame, orient="vertical").pack(side="left", fill="y", padx=8)
-            ttk.Checkbutton(self.dynamic_frame, text="มี Header", variable=self.csv_has_header).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="Delim:").pack(side="left", **p)
+            ctk.CTkComboBox(self.dynamic_frame, variable=self.delimiter_var,
+                            values=[",", ";", "\t", "|"], width=70).pack(side="left", **p)
+            self._sep(self.dynamic_frame)
+            ctk.CTkLabel(self.dynamic_frame, text="Key Col:").pack(side="left", **p)
+            ctk.CTkEntry(self.dynamic_frame, textvariable=self.csv_key_col, width=42).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="Value Col:").pack(side="left", **p)
+            ctk.CTkEntry(self.dynamic_frame, textvariable=self.csv_val_col, width=42).pack(side="left", **p)
+            self._sep(self.dynamic_frame)
+            ctk.CTkCheckBox(self.dynamic_frame, text="มี Header",
+                            variable=self.csv_has_header).pack(side="left", **p)
 
         elif fmt == "json":
-            ttk.Label(self.dynamic_frame, text="โครงสร้าง:").pack(side="left", **p)
-            ttk.Combobox(self.dynamic_frame, textvariable=self.json_structure,
-                         values=["array", "object"], state="readonly", width=8).pack(side="left", **p)
-            ttk.Separator(self.dynamic_frame, orient="vertical").pack(side="left", fill="y", padx=8)
-            ttk.Label(self.dynamic_frame, text="Key field:").pack(side="left", **p)
-            ttk.Entry(self.dynamic_frame, textvariable=self.json_key_field, width=10).pack(side="left", **p)
-            ttk.Label(self.dynamic_frame, text="Value field:").pack(side="left", **p)
-            ttk.Entry(self.dynamic_frame, textvariable=self.json_val_field, width=10).pack(side="left", **p)
-            tk.Label(self.dynamic_frame, text="(object = keys มาจาก property names)",
-                     font=("Segoe UI", 9), fg=TEXT_HINT, bg=BG_CARD).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="โครงสร้าง:").pack(side="left", **p)
+            ctk.CTkOptionMenu(self.dynamic_frame, variable=self.json_structure,
+                              values=["array", "object"], width=80).pack(side="left", **p)
+            self._sep(self.dynamic_frame)
+            ctk.CTkLabel(self.dynamic_frame, text="Key field:").pack(side="left", **p)
+            ctk.CTkEntry(self.dynamic_frame, textvariable=self.json_key_field, width=80).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="Value field:").pack(side="left", **p)
+            ctk.CTkEntry(self.dynamic_frame, textvariable=self.json_val_field, width=80).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="(object = keys มาจาก property names)",
+                         font=("Segoe UI", 9), text_color=("gray40", "gray60")).pack(side="left", **p)
 
         elif fmt == "xml":
-            ttk.Label(self.dynamic_frame, text="Item tag:").pack(side="left", **p)
-            ttk.Entry(self.dynamic_frame, textvariable=self.xml_item_tag, width=10).pack(side="left", **p)
-            ttk.Label(self.dynamic_frame, text="Key attr:").pack(side="left", **p)
-            ttk.Entry(self.dynamic_frame, textvariable=self.xml_key_attr, width=10).pack(side="left", **p)
-            ttk.Label(self.dynamic_frame, text="Value attr (#text=เนื้อหา):").pack(side="left", **p)
-            ttk.Entry(self.dynamic_frame, textvariable=self.xml_val_attr, width=10).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="Item tag:").pack(side="left", **p)
+            ctk.CTkEntry(self.dynamic_frame, textvariable=self.xml_item_tag, width=80).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="Key attr:").pack(side="left", **p)
+            ctk.CTkEntry(self.dynamic_frame, textvariable=self.xml_key_attr, width=80).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="Value attr (#text=เนื้อหา):").pack(side="left", **p)
+            ctk.CTkEntry(self.dynamic_frame, textvariable=self.xml_val_attr, width=80).pack(side="left", **p)
+
+    def _sep(self, parent):
+        ctk.CTkFrame(parent, width=1, height=18, fg_color=("gray60", "gray40")).pack(side="left", padx=8)
 
     # ── browse ────────────────────────────────────────
 
@@ -447,7 +383,7 @@ class KeyMatcherApp:
         if path:
             self.base_path.set(path)
             self._auto_detect(path)
-            self.status_label.config(text=f"📄 Base: {os.path.basename(path)}")
+            self.status_label.configure(text=f"📄 Base: {os.path.basename(path)}")
 
     def _browse_target(self):
         path = filedialog.askopenfilename(
@@ -458,15 +394,13 @@ class KeyMatcherApp:
                        ("All files", "*.*")])
         if path:
             self.target_path.set(path)
-            self.status_label.config(text=f"📄 Target: {os.path.basename(path)}")
+            self.status_label.configure(text=f"📄 Target: {os.path.basename(path)}")
 
     def _auto_detect(self, path):
         ext = os.path.splitext(path)[1].lower().lstrip(".")
         if ext in ("txt", "csv", "json", "xml"):
             self.format_var.set(ext)
             self._update_config_panel()
-
-    # ── auto output path ──────────────────────────────
 
     def _auto_output_path(self):
         base = self.base_path.get().strip()
@@ -516,15 +450,15 @@ class KeyMatcherApp:
             messagebox.showwarning("กรุณาเลือกไฟล์", "ต้องเลือกทั้งไฟล์ Base และ Target")
             return
         if not os.path.exists(base_path):
-            messagebox.showerror("ไม่พบไฟล์", f"ไม่พบ Base: {base_path}")
+            messagebox.showerror("ไม่พบไฟล์", f"ไม่พบ Base:\n{base_path}")
             return
         if not os.path.exists(target_path):
-            messagebox.showerror("ไม่พบไฟล์", f"ไม่พบ Target: {target_path}")
+            messagebox.showerror("ไม่พบไฟล์", f"ไม่พบ Target:\n{target_path}")
             return
 
-        self.status_label.config(text="⏳ กำลังอ่านไฟล์...")
-        self.progress["mode"] = "indeterminate"
-        self.progress.start(8)
+        self.status_label.configure(text="⏳ กำลังอ่านไฟล์...")
+        self.progress.configure(mode="indeterminate")
+        self.progress.start()
         self.root.update_idletasks()
 
         try:
@@ -546,15 +480,15 @@ class KeyMatcherApp:
             pct = (n_match / n_total * 100) if n_total > 0 else 0
 
             self.progress.stop()
-            self.progress["mode"] = "determinate"
-            self.progress["value"] = pct
+            self.progress.configure(mode="determinate")
+            self.progress.set(pct / 100)
 
             if pct >= 95:
-                color = SUCCESS
+                color = GREEN
             elif pct >= 70:
-                color = WARNING
+                color = YELLOW
             else:
-                color = DANGER
+                color = RED
 
             parts = [f"จับคู่ {n_match}/{n_total} ({pct:.1f}%)"]
             if n_unmatch > 0:
@@ -562,26 +496,23 @@ class KeyMatcherApp:
             if manual_added > 0:
                 parts.append(f"เพิ่มเอง {manual_added}")
 
-            self.stats_label.config(text="  │  ".join(parts), fg=color)
+            self.stats_label.configure(text="  │  ".join(parts), text_color=color)
+            self.progress.configure(progress_color=color)
 
-            style = ttk.Style()
-            style.configure("TProgressbar", background=color,
-                            lightcolor=color, darkcolor=color)
-
-            self.status_label.config(text=f"✅  จับคู่แล้ว {n_match:,} keys — พร้อมบันทึก")
+            self.status_label.configure(text=f"✅  จับคู่แล้ว {n_match:,} keys — พร้อมบันทึก")
             self._show_preview(merged)
 
         except Exception as e:
             self.progress.stop()
-            self.progress["mode"] = "determinate"
-            self.progress["value"] = 0
-            self.stats_label.config(text="เกิดข้อผิดพลาด", fg=DANGER)
+            self.progress.configure(mode="determinate")
+            self.progress.set(0)
+            self.stats_label.configure(text="เกิดข้อผิดพลาด", text_color=RED)
             messagebox.showerror("เกิดข้อผิดพลาด", f"{type(e).__name__}:\n{e}")
-            self.status_label.config(text=f"❌ Error: {e}")
+            self.status_label.configure(text=f"❌ Error: {e}")
 
     def _show_preview(self, data):
         self.preview_text.configure(state="normal")
-        self.preview_text.delete("1.0", "end")
+        self.preview_text.delete("0.0", "end")
 
         delimiter = self.delimiter_var.get()
         fmt = self.format_var.get()
@@ -590,24 +521,14 @@ class KeyMatcherApp:
         for i, (key, val) in enumerate(lines):
             if i >= 50:
                 self.preview_text.insert("end",
-                    f"\n\n⋯  อีก {len(lines) - 50:,} บรรทัด  (กด 💾 Save เพื่อบันทึกทั้งหมด)", "muted")
+                    f"\n⋯  อีก {len(lines) - 50:,} บรรทัด  (กด 💾 Save เพื่อบันทึกทั้งหมด)\n")
                 break
             if fmt == "txt":
-                self.preview_text.insert("end", key, "key")
-                self.preview_text.insert("end", delimiter, "delim")
-                self.preview_text.insert("end", val + "\n", "val")
+                self.preview_text.insert("end", f"{key}{delimiter}{val}\n")
             else:
-                self.preview_text.insert("end", key, "key")
-                self.preview_text.insert("end", "  →  ", "delim")
-                self.preview_text.insert("end", val + "\n", "val")
+                self.preview_text.insert("end", f"{key}  →  {val}\n")
 
         self.preview_text.configure(state="disabled")
-
-        self.preview_text.tag_configure("key", foreground="#89b4fa")
-        self.preview_text.tag_configure("delim", foreground="#6c7086")
-        self.preview_text.tag_configure("val", foreground=PREVIEW_FG)
-        self.preview_text.tag_configure("muted", foreground="#585b70",
-                                        font=("Cascadia Code", 9, "italic"))
 
     # ── save ──────────────────────────────────────────
 
@@ -651,18 +572,18 @@ class KeyMatcherApp:
                                val_attr=self.xml_val_attr.get(),
                                encoding=enc)
 
-            self.status_label.config(text=f"💾  บันทึกแล้ว: {path}")
+            self.status_label.configure(text=f"💾  บันทึกแล้ว: {path}")
             messagebox.showinfo("บันทึกสำเร็จ",
                                 f"บันทึกแล้ว:\n{path}\n\n"
                                 f"📊 {len(self.merged_data):,} keys")
         except Exception as e:
             messagebox.showerror("บันทึกไม่สำเร็จ", f"{type(e).__name__}:\n{e}")
-            self.status_label.config(text=f"❌ บันทึกไม่สำเร็จ: {e}")
+            self.status_label.configure(text=f"❌ บันทึกไม่สำเร็จ: {e}")
 
 
 # ═══════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    root = ctk.CTk()
     app = KeyMatcherApp(root)
     root.mainloop()
