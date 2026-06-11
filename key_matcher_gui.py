@@ -112,17 +112,60 @@ def write_xml_file(data, path, root_tag="root", item_tag="string",
 # Matcher
 # ═══════════════════════════════════════════════════════════
 
+def is_likely_garbled(text):
+    """ตรวจหาข้อความที่ encode ผิด (mojibake) เช่น Êä»à´ÍÃÝ"""
+    if not text or len(text) < 3:
+        return False
+
+    # กลุ่มอักขระที่พบบ่อยในข้อความเข้ารหัสผิด
+    # Latin Extended-A/B, IPA, spacing modifiers etc.
+    garbled_ranges = [
+        (0x0080, 0x00FF),   # Latin-1 Supplement
+        (0x0100, 0x024F),   # Latin Extended-A/B
+        (0x02B0, 0x02FF),   # Spacing Modifiers
+    ]
+
+    garbled_count = 0
+    total = len(text)
+    for ch in text:
+        cp = ord(ch)
+        # ข้ามช่องว่างและ punctuation ปกติ
+        if ch.isspace() or cp < 128:
+            continue
+        for lo, hi in garbled_ranges:
+            if lo <= cp <= hi:
+                garbled_count += 1
+                break
+
+    # ถ้ามีอักขระต้องสงสัยเกิน 25% ของความยาว → garbled
+    ratio = garbled_count / max(total, 1)
+    if ratio > 0.25:
+        return True
+
+    # ตรวจจับแพทเทิร์น mojibake: มี extended Latin ปน ASCII ไม่มีช่องว่างปกติ
+    # เช่น "Êä»à´ÍÃÝ-áÁ¹" (อักษรประหลาดต่อเนื่องยาว)
+    if garbled_count >= 5 and ratio > 0.15:
+        return True
+
+    return False
+
+
 def match_keys(base_dict, target_dict):
     result = OrderedDict()
-    matched = unmatched = 0
+    matched = unmatched = garbled_skip = 0
     for key, base_val in base_dict.items():
         if key in target_dict:
-            result[key] = target_dict[key]
-            matched += 1
+            tval = target_dict[key]
+            if is_likely_garbled(tval):
+                result[key] = base_val
+                garbled_skip += 1
+            else:
+                result[key] = tval
+                matched += 1
         else:
             result[key] = base_val
             unmatched += 1
-    return result, matched, unmatched, len(base_dict)
+    return result, matched, unmatched, garbled_skip, len(base_dict)
 
 # ═══════════════════════════════════════════════════════════
 # GUI — CustomTkinter
@@ -474,10 +517,10 @@ class KeyMatcherApp:
                         base_dict[k] = ""
                         manual_added += 1
 
-            merged, n_match, n_unmatch, n_total = match_keys(base_dict, target_dict)
+            merged, n_match, n_unmatch, n_garbled, n_total = match_keys(base_dict, target_dict)
             self.merged_data = merged
 
-            pct = (n_match / n_total * 100) if n_total > 0 else 0
+            pct = ((n_match + n_garbled) / n_total * 100) if n_total > 0 else 0
 
             self.progress.stop()
             self.progress.configure(mode="determinate")
@@ -491,6 +534,8 @@ class KeyMatcherApp:
                 color = RED
 
             parts = [f"จับคู่ {n_match}/{n_total} ({pct:.1f}%)"]
+            if n_garbled > 0:
+                parts.append(f"ข้ามข้อความเพี้ยน {n_garbled}")
             if n_unmatch > 0:
                 parts.append(f"ไม่พบ {n_unmatch}")
             if manual_added > 0:
