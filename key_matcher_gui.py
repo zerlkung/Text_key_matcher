@@ -104,7 +104,7 @@ def parse_xml_file(path, item_tag="string", key_attr="id", val_attr="#text", enc
                 key = m.group(1)
                 val = m.group(2)
                 result[key] = val
-        return result
+        return result, True   # is_merged=True
 
     # standard XML path
     tree = ET.fromstring(raw)
@@ -114,7 +114,7 @@ def parse_xml_file(path, item_tag="string", key_attr="id", val_attr="#text", enc
             key = elem.tag
         val = (elem.text or "") if val_attr == "#text" else elem.get(val_attr, "")
         result[key] = val
-    return result
+    return result, False  # is_merged=False
 
 def write_xml_file(data, path, root_tag="root", item_tag="string",
                    key_attr="id", val_attr="#text", encoding="utf-8"):
@@ -130,6 +130,13 @@ def write_xml_file(data, path, root_tag="root", item_tag="string",
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ")
     tree.write(path, encoding=encoding, xml_declaration=True)
+
+
+def write_xml_fragments(data, path, item_tag="string", key_attr="guid", encoding="utf-8"):
+    """เขียนไฟล์ merged XML fragments (ไม่มี root, ไม่มี closing tag)"""
+    with open(path, "w", encoding=encoding, newline="\n") as f:
+        for key, val in data.items():
+            f.write(f'<{item_tag} {key_attr}={key}>{val}\n')
 
 # ═══════════════════════════════════════════════════════════
 # Matcher
@@ -234,6 +241,8 @@ class KeyMatcherApp:
         self.xml_val_attr = ctk.StringVar(value="#text")
         self.manual_keys = ctk.StringVar()
         self.merged_data = None
+        self._xml_is_merged = False
+        self._xml_source_path = ""
 
         self._build_ui()
 
@@ -507,11 +516,14 @@ class KeyMatcherApp:
                                    structure=self.json_structure.get(),
                                    encoding=enc)
         elif fmt == "xml":
-            return parse_xml_file(path,
+            data, is_merged = parse_xml_file(path,
                                   item_tag=self.xml_item_tag.get(),
                                   key_attr=self.xml_key_attr.get(),
                                   val_attr=self.xml_val_attr.get(),
                                   encoding=enc)
+            self._xml_is_merged = is_merged
+            self._xml_source_path = path  # เก็บไว้ใช้ตอนเขียน output
+            return data
         else:
             raise ValueError(f"Unknown format: {fmt}")
 
@@ -643,11 +655,17 @@ class KeyMatcherApp:
                                 val_field=self.json_val_field.get(),
                                 encoding=enc)
             elif fmt == "xml":
-                write_xml_file(self.merged_data, path,
-                               item_tag=self.xml_item_tag.get(),
-                               key_attr=self.xml_key_attr.get(),
-                               val_attr=self.xml_val_attr.get(),
-                               encoding=enc)
+                if self._xml_is_merged:
+                    write_xml_fragments(self.merged_data, path,
+                                        item_tag=self.xml_item_tag.get(),
+                                        key_attr=self.xml_key_attr.get(),
+                                        encoding=enc)
+                else:
+                    write_xml_file(self.merged_data, path,
+                                   item_tag=self.xml_item_tag.get(),
+                                   key_attr=self.xml_key_attr.get(),
+                                   val_attr=self.xml_val_attr.get(),
+                                   encoding=enc)
 
             self.status_label.configure(text=f"💾  บันทึกแล้ว: {path}")
             messagebox.showinfo("บันทึกสำเร็จ",
