@@ -95,16 +95,24 @@ def parse_xml_file(path, item_tag="string", key_attr="id", val_attr="#text", enc
         tag_pattern = re.compile(
             rf'<{re.escape(item_tag)}\s+{re.escape(key_attr)}=([^\s>]+)>(.*)'
         )
+        line_struct = []  # เก็บโครงสร้างทุกบรรทัดไว้เขียน output
         for line in raw.splitlines():
             stripped = line.strip()
-            if not stripped or stripped.startswith("#") or stripped.startswith("//"):
+            if not stripped:
+                line_struct.append({"type": "empty", "text": line})
+                continue
+            if stripped.startswith("#") or stripped.startswith("//"):
+                line_struct.append({"type": "comment", "text": line})
                 continue
             m = tag_pattern.match(stripped)
             if m:
                 key = m.group(1)
                 val = m.group(2)
                 result[key] = val
-        return result, True   # is_merged=True
+                line_struct.append({"type": "entry", "key": key, "val": val})
+            else:
+                line_struct.append({"type": "comment", "text": line})
+        return result, True, line_struct   # is_merged=True
 
     # standard XML path
     tree = ET.fromstring(raw)
@@ -114,7 +122,7 @@ def parse_xml_file(path, item_tag="string", key_attr="id", val_attr="#text", enc
             key = elem.tag
         val = (elem.text or "") if val_attr == "#text" else elem.get(val_attr, "")
         result[key] = val
-    return result, False  # is_merged=False
+    return result, False, []  # is_merged=False
 
 def write_xml_file(data, path, root_tag="root", item_tag="string",
                    key_attr="id", val_attr="#text", encoding="utf-8"):
@@ -132,11 +140,16 @@ def write_xml_file(data, path, root_tag="root", item_tag="string",
     tree.write(path, encoding=encoding, xml_declaration=True)
 
 
-def write_xml_fragments(data, path, item_tag="string", key_attr="guid", encoding="utf-8"):
-    """เขียนไฟล์ merged XML fragments (ไม่มี root, ไม่มี closing tag)"""
+def write_xml_fragments(data, line_struct, path, item_tag="string", key_attr="guid", encoding="utf-8"):
+    """เขียนไฟล์ merged XML fragments โดยคงโครงสร้างทุกบรรทัด (comment, empty line, entry)"""
     with open(path, "w", encoding=encoding, newline="\n") as f:
-        for key, val in data.items():
-            f.write(f'<{item_tag} {key_attr}={key}>{val}\n')
+        for item in line_struct:
+            if item["type"] == "comment" or item["type"] == "empty":
+                f.write(item["text"] + "\n")
+            elif item["type"] == "entry":
+                key = item["key"]
+                val = data.get(key, item["val"])  # ใช้ค่าใหม่จาก merged data ถ้ามี
+                f.write(f'<{item_tag} {key_attr}={key}>{val}\n')
 
 # ═══════════════════════════════════════════════════════════
 # Matcher
@@ -242,7 +255,9 @@ class KeyMatcherApp:
         self.manual_keys = ctk.StringVar()
         self.merged_data = None
         self._xml_is_merged = False
-        self._xml_source_path = ""
+        self._xml_line_struct = []
+        self._xml_item_tag = ""
+        self._xml_key_attr = ""
 
         self._build_ui()
 
@@ -516,13 +531,15 @@ class KeyMatcherApp:
                                    structure=self.json_structure.get(),
                                    encoding=enc)
         elif fmt == "xml":
-            data, is_merged = parse_xml_file(path,
+            data, is_merged, line_struct = parse_xml_file(path,
                                   item_tag=self.xml_item_tag.get(),
                                   key_attr=self.xml_key_attr.get(),
                                   val_attr=self.xml_val_attr.get(),
                                   encoding=enc)
             self._xml_is_merged = is_merged
-            self._xml_source_path = path  # เก็บไว้ใช้ตอนเขียน output
+            self._xml_line_struct = line_struct
+            self._xml_item_tag = self.xml_item_tag.get()
+            self._xml_key_attr = self.xml_key_attr.get()
             return data
         else:
             raise ValueError(f"Unknown format: {fmt}")
@@ -656,9 +673,9 @@ class KeyMatcherApp:
                                 encoding=enc)
             elif fmt == "xml":
                 if self._xml_is_merged:
-                    write_xml_fragments(self.merged_data, path,
-                                        item_tag=self.xml_item_tag.get(),
-                                        key_attr=self.xml_key_attr.get(),
+                    write_xml_fragments(self.merged_data, self._xml_line_struct, path,
+                                        item_tag=self._xml_item_tag,
+                                        key_attr=self._xml_key_attr,
                                         encoding=enc)
                 else:
                     write_xml_file(self.merged_data, path,
