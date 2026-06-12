@@ -126,6 +126,7 @@ id,text
 ตั้งค่า: Format `xml`, Item tag `string`, Key attr `guid`, Value attr `#text`
 (โปรแกรม auto-detect merged format, ไม่ต้องใช้ delimiter)
 รองรับไฟล์ที่มี `#` comment, unquoted attributes, ไม่มี `</string>` ปิด
+เมื่อ Save — output จะคง format เดิม (ไม่มี root, ไม่มี closing tag, ไม่ quote attributes)
 
 ---
 
