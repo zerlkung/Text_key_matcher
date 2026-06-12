@@ -83,9 +83,32 @@ def write_json_file(data, path, structure="array", key_field="id",
 
 def parse_xml_file(path, item_tag="string", key_attr="id", val_attr="#text", encoding="utf-8"):
     result = OrderedDict()
-    tree = ET.parse(path)
-    root = tree.getroot()
-    for elem in root.iter(item_tag):
+
+    with open(path, "r", encoding=encoding) as f:
+        raw = f.read()
+
+    # ตรวจจับ XML fragments / merged format
+    # เช่น <string guid=UUID>text — ไม่มี </string> ปิด, ไม่มี root, มี comment # src:
+    raw_stripped = raw.strip()
+    if not raw_stripped.startswith("<?xml") and not raw_stripped.startswith("<root"):
+        # regex line-by-line: <tag attr=val>content
+        tag_pattern = re.compile(
+            rf'<{re.escape(item_tag)}\s+{re.escape(key_attr)}=([^\s>]+)>(.*)'
+        )
+        for line in raw.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or stripped.startswith("//"):
+                continue
+            m = tag_pattern.match(stripped)
+            if m:
+                key = m.group(1)
+                val = m.group(2)
+                result[key] = val
+        return result
+
+    # standard XML path
+    tree = ET.fromstring(raw)
+    for elem in tree.iter(item_tag):
         key = elem.tag if key_attr == "#tag" else elem.get(key_attr)
         if key is None:
             key = elem.tag
@@ -288,7 +311,8 @@ class KeyMatcherApp:
                           values=["txt", "csv", "json", "xml"], width=80,
                           command=lambda _: self._update_config_panel()).grid(row=1, column=1, sticky="w", **p4)
 
-        ctk.CTkLabel(self.config_card, text="Delimiter:").grid(row=1, column=2, sticky="e", **p4)
+        self.delim_label = ctk.CTkLabel(self.config_card, text="Delimiter:")
+        self.delim_label.grid(row=1, column=2, sticky="e", **p4)
         self.delim_combo = ctk.CTkComboBox(self.config_card, variable=self.delimiter_var,
                                            values=["|", "=", ":", "\t", ",", " -> "], width=90)
         self.delim_combo.grid(row=1, column=3, sticky="w", **p4)
@@ -368,6 +392,14 @@ class KeyMatcherApp:
             w.destroy()
 
         fmt = self.format_var.get()
+
+        # ซ่อน/แสดง delimiter ตาม format
+        if fmt in ("json", "xml"):
+            self.delim_label.grid_remove()
+            self.delim_combo.grid_remove()
+        else:
+            self.delim_label.grid()
+            self.delim_combo.grid()
         p = {"padx": 4, "pady": 2}
 
         if fmt == "txt":

@@ -117,6 +117,16 @@ id,text
 ```
 ตั้งค่า: Item tag, Key attribute, Value attribute (`#text` = เนื้อหาภายใน element)
 
+### `.xml` / `.txt` — Merged XML fragments (ไม่มี root, ไม่มี closing tag)
+```xml
+# src: archive_figure.msg.23
+<string guid=cd5998f9-ce71-40f2-beee-585ce93ae678>วอล์คเกอร์
+<string guid=bdb759bc-aff3-4834-bed5-46d7ac73b215>2.40 ม.
+```
+ตั้งค่า: Format `xml`, Item tag `string`, Key attr `guid`, Value attr `#text`
+(โปรแกรม auto-detect merged format, ไม่ต้องใช้ delimiter)
+รองรับไฟล์ที่มี `#` comment, unquoted attributes, ไม่มี `</string>` ปิด
+
 ---
 
 ## ⚙ ความต้องการ / Requirements
