@@ -596,7 +596,10 @@ class KeyMatcherApp:
 
         try:
             base_dict = self._parse_file(base_path)
+            # จับ _json_original จาก base เท่านั้น (target parse จะ overwrite)
+            json_struct = getattr(self, '_json_original', None)
             target_dict = self._parse_file(target_path)
+            self._json_original = json_struct  # restore base structure
 
             manual = self.manual_keys.get().strip()
             manual_added = 0
