@@ -61,6 +61,17 @@ def parse_json_file(path, key_field="id", val_field="value", structure="array", 
     with open(path, "r", encoding=encoding) as f:
         raw = json.load(f)
     result = OrderedDict()
+    original_structure = None  # เก็บโครงสร้างเดิมไว้ใช้ตอน save
+
+    # auto-unwrap: {"entries": [...]} → use inner array
+    is_wrapped = False
+    if structure == "array" and isinstance(raw, dict):
+        entries = raw.get("entries")
+        if entries is not None:
+            original_structure = raw  # keep full structure
+            raw = entries
+            is_wrapped = True
+
     if structure == "object":
         if isinstance(raw, dict):
             for k, v in raw.items():
@@ -72,12 +83,21 @@ def parse_json_file(path, key_field="id", val_field="value", structure="array", 
                 v = item.get(val_field, "")
                 if k is not None:
                     result[str(k)] = str(v) if v is not None else ""
-    return result
+    return result, is_wrapped, original_structure
 
 def write_json_file(data, path, structure="array", key_field="id",
-                    val_field="value", encoding="utf-8"):
-    out = dict(data) if structure == "object" else [
-        {key_field: k, val_field: v} for k, v in data.items()]
+                    val_field="value", original_structure=None, encoding="utf-8"):
+    # ถ้ามีโครงสร้างเดิม (wrapped) → อัปเดตเฉพาะ val_field แล้วเขียนกลับ
+    if original_structure is not None and "entries" in original_structure:
+        for entry in original_structure["entries"]:
+            k = str(entry.get(key_field, ""))
+            if k in data:
+                entry[val_field] = data[k]
+        out = original_structure
+    elif structure == "object":
+        out = dict(data)
+    else:
+        out = [{key_field: k, val_field: v} for k, v in data.items()]
     with open(path, "w", encoding=encoding) as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
 
@@ -258,6 +278,10 @@ class KeyMatcherApp:
         self._xml_line_struct = []
         self._xml_item_tag = ""
         self._xml_key_attr = ""
+        self._json_original = None
+        self._json_val_field = ""
+        self._json_key_field = ""
+        self._json_structure = ""
 
         self._build_ui()
 
@@ -525,11 +549,16 @@ class KeyMatcherApp:
                                   has_header=self.csv_has_header.get(),
                                   encoding=enc)
         elif fmt == "json":
-            return parse_json_file(path,
+            data, is_wrapped, orig_struct = parse_json_file(path,
                                    key_field=self.json_key_field.get(),
                                    val_field=self.json_val_field.get(),
                                    structure=self.json_structure.get(),
                                    encoding=enc)
+            self._json_original = orig_struct
+            self._json_val_field = self.json_val_field.get()
+            self._json_key_field = self.json_key_field.get()
+            self._json_structure = self.json_structure.get()
+            return data
         elif fmt == "xml":
             data, is_merged, line_struct = parse_xml_file(path,
                                   item_tag=self.xml_item_tag.get(),
@@ -667,9 +696,10 @@ class KeyMatcherApp:
                                delimiter=self.delimiter_var.get(), encoding=enc)
             elif fmt == "json":
                 write_json_file(self.merged_data, path,
-                                structure=self.json_structure.get(),
-                                key_field=self.json_key_field.get(),
-                                val_field=self.json_val_field.get(),
+                                structure=self._json_structure,
+                                key_field=self._json_key_field,
+                                val_field=self._json_val_field,
+                                original_structure=self._json_original,
                                 encoding=enc)
             elif fmt == "xml":
                 if self._xml_is_merged:
