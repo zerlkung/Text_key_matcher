@@ -57,9 +57,11 @@ def write_csv_file(data, path, key_header="key", val_header="value",
         for key, val in data.items():
             writer.writerow([key, val])
 
-def parse_json_file(path, key_field="id", val_field="value", structure="array", encoding="utf-8"):
+def parse_json_file(path, key_field="id", val_field="value", structure="array", encoding="utf-8", src_field=None):
     with open(path, "r", encoding=encoding) as f:
         raw = json.load(f)
+    read_field = src_field if src_field else val_field  # อ่านจาก field นี้
+
     result = OrderedDict()
     original_structure = None  # เก็บโครงสร้างเดิมไว้ใช้ตอน save
 
@@ -80,7 +82,7 @@ def parse_json_file(path, key_field="id", val_field="value", structure="array", 
         if isinstance(raw, list):
             for item in raw:
                 k = item.get(key_field)
-                v = item.get(val_field, "")
+                v = item.get(read_field, "")
                 if k is not None:
                     result[str(k)] = str(v) if v is not None else ""
     return result, is_wrapped, original_structure
@@ -269,6 +271,7 @@ class KeyMatcherApp:
         self.json_structure = ctk.StringVar(value="array")
         self.json_key_field = ctk.StringVar(value="id")
         self.json_val_field = ctk.StringVar(value="value")
+        self.json_src_field = ctk.StringVar(value="")  # source field (อ่านจาก target), ว่าง = ใช้ val_field
         self.xml_item_tag = ctk.StringVar(value="string")
         self.xml_key_attr = ctk.StringVar(value="id")
         self.xml_val_attr = ctk.StringVar(value="#text")
@@ -478,9 +481,11 @@ class KeyMatcherApp:
             self._sep(self.dynamic_frame)
             ctk.CTkLabel(self.dynamic_frame, text="Key field:").pack(side="left", **p)
             ctk.CTkEntry(self.dynamic_frame, textvariable=self.json_key_field, width=80).pack(side="left", **p)
-            ctk.CTkLabel(self.dynamic_frame, text="Value field:").pack(side="left", **p)
-            ctk.CTkEntry(self.dynamic_frame, textvariable=self.json_val_field, width=80).pack(side="left", **p)
-            ctk.CTkLabel(self.dynamic_frame, text="(object = keys มาจาก property names)",
+            ctk.CTkLabel(self.dynamic_frame, text="Value (write):").pack(side="left", **p)
+            ctk.CTkEntry(self.dynamic_frame, textvariable=self.json_val_field, width=60).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="Source (read):").pack(side="left", **p)
+            ctk.CTkEntry(self.dynamic_frame, textvariable=self.json_src_field, width=60).pack(side="left", **p)
+            ctk.CTkLabel(self.dynamic_frame, text="(src ว่าง = อ่านจาก value)",
                          font=("Segoe UI", 9), text_color=("gray40", "gray60")).pack(side="left", **p)
 
         elif fmt == "xml":
@@ -549,11 +554,13 @@ class KeyMatcherApp:
                                   has_header=self.csv_has_header.get(),
                                   encoding=enc)
         elif fmt == "json":
+            src = self.json_src_field.get().strip()
             data, is_wrapped, orig_struct = parse_json_file(path,
                                    key_field=self.json_key_field.get(),
                                    val_field=self.json_val_field.get(),
                                    structure=self.json_structure.get(),
-                                   encoding=enc)
+                                   encoding=enc,
+                                   src_field=src if src else None)
             self._json_original = orig_struct
             self._json_val_field = self.json_val_field.get()
             self._json_key_field = self.json_key_field.get()
