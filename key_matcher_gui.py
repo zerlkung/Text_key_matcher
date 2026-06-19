@@ -250,6 +250,19 @@ RED         = "#f87171"
 TEXT_TITLE  = "#DCE4EE"
 
 FONT_CARD   = ("Segoe UI", 12, "bold")
+
+# ── game presets ───────────────────────────────────────
+PRESETS = {
+    "": {},   # manual
+    "Crimson Desert (PALOC)": {
+        "fmt": "json", "structure": "array",
+        "key_field": "key", "val_field": "translation", "src_field": "",
+    },
+    "Crimson Desert (EN/TH)": {
+        "fmt": "json", "structure": "array",
+        "key_field": "key", "val_field": "translation", "src_field": "original",
+    },
+}
 FONT_MONO   = ("Cascadia Code", 10)
 
 class KeyMatcherApp:
@@ -275,6 +288,7 @@ class KeyMatcherApp:
         self.xml_item_tag = ctk.StringVar(value="string")
         self.xml_key_attr = ctk.StringVar(value="id")
         self.xml_val_attr = ctk.StringVar(value="#text")
+        self.preset_var = ctk.StringVar(value="")
         self.manual_keys = ctk.StringVar()
         self.merged_data = None
         self._xml_is_merged = False
@@ -355,27 +369,33 @@ class KeyMatcherApp:
         # ── card: format config ──
         self.config_card = self._card(main, "⚙  ตั้งค่ารูปแบบไฟล์")
         self.config_card.grid(row=2, column=0, sticky="ew", pady=(0, 6))
-        self.config_card.grid_columnconfigure(5, weight=1)
+        self.config_card.grid_columnconfigure(6, weight=1)
 
-        ctk.CTkLabel(self.config_card, text="Format:").grid(row=1, column=0, sticky="w", **p4)
+        # preset row
+        ctk.CTkLabel(self.config_card, text="Game:").grid(row=1, column=0, sticky="w", padx=6, pady=(2, 0))
+        ctk.CTkOptionMenu(self.config_card, variable=self.preset_var,
+                          values=list(PRESETS.keys()), width=220,
+                          command=self._apply_preset).grid(row=1, column=1, columnspan=2, sticky="w", padx=6, pady=(2, 0))
+
+        ctk.CTkLabel(self.config_card, text="Format:").grid(row=2, column=0, sticky="w", **p4)
         ctk.CTkOptionMenu(self.config_card, variable=self.format_var,
                           values=["txt", "csv", "json", "xml"], width=80,
-                          command=lambda _: self._update_config_panel()).grid(row=1, column=1, sticky="w", **p4)
+                          command=lambda _: self._update_config_panel()).grid(row=2, column=1, sticky="w", **p4)
 
         self.delim_label = ctk.CTkLabel(self.config_card, text="Delimiter:")
-        self.delim_label.grid(row=1, column=2, sticky="e", **p4)
+        self.delim_label.grid(row=2, column=2, sticky="e", **p4)
         self.delim_combo = ctk.CTkComboBox(self.config_card, variable=self.delimiter_var,
                                            values=["|", "=", ":", "\t", ",", " -> "], width=90)
-        self.delim_combo.grid(row=1, column=3, sticky="w", **p4)
+        self.delim_combo.grid(row=2, column=3, sticky="w", **p4)
 
-        ctk.CTkLabel(self.config_card, text="Encoding:").grid(row=1, column=4, sticky="e", **p4)
+        ctk.CTkLabel(self.config_card, text="Encoding:").grid(row=2, column=4, sticky="e", **p4)
         ctk.CTkOptionMenu(self.config_card, variable=self.encoding_var,
                           values=["utf-8", "utf-8-sig", "utf-16", "cp874", "tis-620", "latin-1"],
-                          width=100).grid(row=1, column=5, sticky="w", **p4)
+                          width=100).grid(row=2, column=5, sticky="w", **p4)
 
         # dynamic sub-row
         self.dynamic_frame = ctk.CTkFrame(self.config_card, fg_color="transparent")
-        self.dynamic_frame.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(8, 2))
+        self.dynamic_frame.grid(row=3, column=0, columnspan=6, sticky="ew", pady=(8, 2))
         self._update_config_panel()
 
         # ── card: manual keys ──
@@ -437,6 +457,22 @@ class KeyMatcherApp:
         self.theme_switch.configure(text="🌙  Dark" if mode == "dark" else "☀  Light")
 
     # ── config panel ──────────────────────────────────
+
+    def _apply_preset(self, choice):
+        preset = PRESETS.get(choice, {})
+        if not preset:
+            return  # manual mode — keep current settings
+        if "fmt" in preset:
+            self.format_var.set(preset["fmt"])
+        if "structure" in preset:
+            self.json_structure.set(preset["structure"])
+        if "key_field" in preset:
+            self.json_key_field.set(preset["key_field"])
+        if "val_field" in preset:
+            self.json_val_field.set(preset["val_field"])
+        if "src_field" in preset:
+            self.json_src_field.set(preset["src_field"])
+        self._update_config_panel()
 
     def _update_config_panel(self):
         for w in self.dynamic_frame.winfo_children():
