@@ -484,7 +484,7 @@ class KeyMatcherApp:
         dialog = ctk.CTkToplevel(self.root)
         dialog.title("Save Game Preset")
         dialog.geometry("360x140")
-        dialog.configure(fg_color=BG_HEADER)
+        dialog.configure(fg_color=("gray20", "gray10"))
         dialog.transient(self.root)
         dialog.grab_set()
         dialog.resizable(False, False)
