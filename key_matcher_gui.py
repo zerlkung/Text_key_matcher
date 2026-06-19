@@ -250,19 +250,6 @@ RED         = "#f87171"
 TEXT_TITLE  = "#DCE4EE"
 
 FONT_CARD   = ("Segoe UI", 12, "bold")
-
-# ── game presets ───────────────────────────────────────
-PRESETS = {
-    "": {},   # manual
-    "Crimson Desert (PALOC)": {
-        "fmt": "json", "structure": "array",
-        "key_field": "key", "val_field": "translation", "src_field": "",
-    },
-    "Crimson Desert (EN/TH)": {
-        "fmt": "json", "structure": "array",
-        "key_field": "key", "val_field": "translation", "src_field": "original",
-    },
-}
 FONT_MONO   = ("Cascadia Code", 10)
 
 class KeyMatcherApp:
@@ -288,6 +275,9 @@ class KeyMatcherApp:
         self.xml_item_tag = ctk.StringVar(value="string")
         self.xml_key_attr = ctk.StringVar(value="id")
         self.xml_val_attr = ctk.StringVar(value="#text")
+        # presets
+        self._presets_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets.json")
+        self._presets = self._load_presets()
         self.preset_var = ctk.StringVar(value="")
         self.manual_keys = ctk.StringVar()
         self.merged_data = None
@@ -373,9 +363,13 @@ class KeyMatcherApp:
 
         # preset row
         ctk.CTkLabel(self.config_card, text="Game:").grid(row=1, column=0, sticky="w", padx=6, pady=(2, 0))
-        ctk.CTkOptionMenu(self.config_card, variable=self.preset_var,
-                          values=list(PRESETS.keys()), width=220,
-                          command=self._apply_preset).grid(row=1, column=1, columnspan=2, sticky="w", padx=6, pady=(2, 0))
+        self.preset_menu = ctk.CTkOptionMenu(self.config_card, variable=self.preset_var,
+                          values=list(self._presets.keys()), width=200,
+                          command=self._apply_preset)
+        self.preset_menu.grid(row=1, column=1, columnspan=2, sticky="w", padx=6, pady=(2, 0))
+        ctk.CTkButton(self.config_card, text="+ Save", width=60, height=24,
+                      font=("Segoe UI", 9),
+                      command=self._save_preset_dialog).grid(row=1, column=5, sticky="e", padx=(0, 6), pady=(2, 0))
 
         ctk.CTkLabel(self.config_card, text="Format:").grid(row=2, column=0, sticky="w", **p4)
         ctk.CTkOptionMenu(self.config_card, variable=self.format_var,
@@ -458,10 +452,71 @@ class KeyMatcherApp:
 
     # ── config panel ──────────────────────────────────
 
+    def _load_presets(self):
+        if os.path.exists(self._presets_file):
+            try:
+                with open(self._presets_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        # fallback defaults
+        return {
+            "": {},
+            "Crimson Desert (PALOC)": {
+                "fmt": "json", "structure": "array",
+                "key_field": "key", "val_field": "translation", "src_field": "",
+            },
+            "Crimson Desert (EN/TH)": {
+                "fmt": "json", "structure": "array",
+                "key_field": "key", "val_field": "translation", "src_field": "original",
+            },
+        }
+
+    def _save_presets(self):
+        with open(self._presets_file, "w", encoding="utf-8") as f:
+            json.dump(self._presets, f, ensure_ascii=False, indent=2)
+
+    def _refresh_preset_menu(self):
+        names = list(self._presets.keys())
+        self.preset_menu.configure(values=names)
+
+    def _save_preset_dialog(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Save Game Preset")
+        dialog.geometry("360x140")
+        dialog.configure(bg=BG_HEADER)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        ctk.CTkLabel(dialog, text="ชื่อเกม / Preset name:").pack(pady=(14, 2))
+        name_var = ctk.StringVar()
+        ctk.CTkEntry(dialog, textvariable=name_var, width=300).pack(padx=20)
+
+        def do_save():
+            name = name_var.get().strip()
+            if not name:
+                return
+            self._presets[name] = {
+                "fmt": self.format_var.get(),
+                "structure": self.json_structure.get(),
+                "key_field": self.json_key_field.get(),
+                "val_field": self.json_val_field.get(),
+                "src_field": self.json_src_field.get(),
+            }
+            self._save_presets()
+            self._refresh_preset_menu()
+            self.preset_var.set(name)
+            dialog.destroy()
+
+        ctk.CTkButton(dialog, text="Save", command=do_save).pack(pady=(8, 4))
+        name_var.trace_add("write", lambda *_: None)  # placeholder
+        dialog.bind("<Return>", lambda e: do_save())
+
     def _apply_preset(self, choice):
-        preset = PRESETS.get(choice, {})
+        preset = self._presets.get(choice, {})
         if not preset:
-            return  # manual mode — keep current settings
+            return
         if "fmt" in preset:
             self.format_var.set(preset["fmt"])
         if "structure" in preset:
