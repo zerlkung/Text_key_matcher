@@ -278,7 +278,7 @@ class KeyMatcherApp:
         # presets
         self._presets_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets.json")
         self._presets = self._load_presets()
-        self.preset_var = ctk.StringVar(value="")
+        self.preset_var = ctk.StringVar(value="Auto")
         self.manual_keys = ctk.StringVar()
         self.merged_data = None
         self._xml_is_merged = False
@@ -461,7 +461,7 @@ class KeyMatcherApp:
                 pass
         # fallback defaults
         return {
-            "": {},
+            "Auto": {},
             "Crimson Desert (PALOC)": {
                 "fmt": "json", "structure": "array",
                 "key_field": "key", "val_field": "translation", "src_field": "",
