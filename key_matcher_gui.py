@@ -481,10 +481,10 @@ class KeyMatcherApp:
         self.preset_menu.configure(values=names)
 
     def _save_preset_dialog(self):
-        dialog = tk.Toplevel(self.root)
+        dialog = ctk.CTkToplevel(self.root)
         dialog.title("Save Game Preset")
         dialog.geometry("360x140")
-        dialog.configure(bg=BG_HEADER)
+        dialog.configure(fg_color=BG_HEADER)
         dialog.transient(self.root)
         dialog.grab_set()
         dialog.resizable(False, False)
