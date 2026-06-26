@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Key Matcher GUI — จับคู่ key-value ระหว่าง 2 ไฟล์
+Key Matcher GUI — จับคู่ key-value ระหว่าง 2 ไฟล์ + แยก/รวมไฟล์ txt
 รองรับ .txt .csv .json .xml
 Built with CustomTkinter + orange theme
 """
@@ -15,7 +15,7 @@ import os
 import re
 
 # ═══════════════════════════════════════════════════════════
-# Parsers
+# Parsers (key-value)
 # ═══════════════════════════════════════════════════════════
 
 def parse_txt(path, delimiter="|", encoding="utf-8"):
@@ -60,20 +60,16 @@ def write_csv_file(data, path, key_header="key", val_header="value",
 def parse_json_file(path, key_field="id", val_field="value", structure="array", encoding="utf-8", src_field=None):
     with open(path, "r", encoding=encoding) as f:
         raw = json.load(f)
-    read_field = src_field if src_field else val_field  # อ่านจาก field นี้
-
+    read_field = src_field if src_field else val_field
     result = OrderedDict()
-    original_structure = None  # เก็บโครงสร้างเดิมไว้ใช้ตอน save
-
-    # auto-unwrap: {"entries": [...]} → use inner array
+    original_structure = None
     is_wrapped = False
     if structure == "array" and isinstance(raw, dict):
         entries = raw.get("entries")
         if entries is not None:
-            original_structure = raw  # keep full structure
+            original_structure = raw
             raw = entries
             is_wrapped = True
-
     if structure == "object":
         if isinstance(raw, dict):
             for k, v in raw.items():
@@ -89,7 +85,6 @@ def parse_json_file(path, key_field="id", val_field="value", structure="array", 
 
 def write_json_file(data, path, structure="array", key_field="id",
                     val_field="value", original_structure=None, encoding="utf-8"):
-    # ถ้ามีโครงสร้างเดิม (wrapped) → อัปเดตเฉพาะ val_field แล้วเขียนกลับ
     if original_structure is not None and "entries" in original_structure:
         for entry in original_structure["entries"]:
             k = str(entry.get(key_field, ""))
@@ -105,19 +100,14 @@ def write_json_file(data, path, structure="array", key_field="id",
 
 def parse_xml_file(path, item_tag="string", key_attr="id", val_attr="#text", encoding="utf-8"):
     result = OrderedDict()
-
     with open(path, "r", encoding=encoding) as f:
         raw = f.read()
-
-    # ตรวจจับ XML fragments / merged format
-    # เช่น <string guid=UUID>text — ไม่มี </string> ปิด, ไม่มี root, มี comment # src:
     raw_stripped = raw.strip()
     if not raw_stripped.startswith("<?xml") and not raw_stripped.startswith("<root"):
-        # regex line-by-line: <tag attr=val>content
         tag_pattern = re.compile(
             rf'<{re.escape(item_tag)}\s+{re.escape(key_attr)}=([^\s>]+)>(.*)'
         )
-        line_struct = []  # เก็บโครงสร้างทุกบรรทัดไว้เขียน output
+        line_struct = []
         for line in raw.splitlines():
             stripped = line.strip()
             if not stripped:
@@ -134,9 +124,7 @@ def parse_xml_file(path, item_tag="string", key_attr="id", val_attr="#text", enc
                 line_struct.append({"type": "entry", "key": key, "val": val})
             else:
                 line_struct.append({"type": "comment", "text": line})
-        return result, True, line_struct   # is_merged=True
-
-    # standard XML path
+        return result, True, line_struct
     tree = ET.fromstring(raw)
     for elem in tree.iter(item_tag):
         key = elem.tag if key_attr == "#tag" else elem.get(key_attr)
@@ -144,7 +132,7 @@ def parse_xml_file(path, item_tag="string", key_attr="id", val_attr="#text", enc
             key = elem.tag
         val = (elem.text or "") if val_attr == "#text" else elem.get(val_attr, "")
         result[key] = val
-    return result, False, []  # is_merged=False
+    return result, False, []
 
 def write_xml_file(data, path, root_tag="root", item_tag="string",
                    key_attr="id", val_attr="#text", encoding="utf-8"):
@@ -161,59 +149,88 @@ def write_xml_file(data, path, root_tag="root", item_tag="string",
     ET.indent(tree, space="  ")
     tree.write(path, encoding=encoding, xml_declaration=True)
 
-
 def write_xml_fragments(data, line_struct, path, item_tag="string", key_attr="guid", encoding="utf-8"):
-    """เขียนไฟล์ merged XML fragments โดยคงโครงสร้างทุกบรรทัด (comment, empty line, entry)"""
     with open(path, "w", encoding=encoding, newline="\n") as f:
         for item in line_struct:
             if item["type"] == "comment" or item["type"] == "empty":
                 f.write(item["text"] + "\n")
             elif item["type"] == "entry":
                 key = item["key"]
-                val = data.get(key, item["val"])  # ใช้ค่าใหม่จาก merged data ถ้ามี
+                val = data.get(key, item["val"])
                 f.write(f'<{item_tag} {key_attr}={key}>{val}\n')
 
 # ═══════════════════════════════════════════════════════════
-# Matcher
+# Split & Join — txt folder merge
+# ═══════════════════════════════════════════════════════════
+
+PATH_MARKER = "[PATH]"
+
+def merge_txt_folder(folder, output_path, encoding="utf-8"):
+    """รวมทุก .txt ใน folder เป็นไฟล์เดียว คั่นด้วย [PATH]filename[PATH]"""
+    files = sorted([f for f in os.listdir(folder) if f.lower().endswith(".txt")])
+    count = 0
+    with open(output_path, "w", encoding=encoding, newline="\n") as out:
+        for fname in files:
+            fpath = os.path.join(folder, fname)
+            with open(fpath, "r", encoding=encoding) as inf:
+                content = inf.read()
+            out.write(f"{PATH_MARKER}{fname}{PATH_MARKER}\n")
+            if content and not content.endswith("\n"):
+                content += "\n"
+            out.write(content)
+            count += 1
+    return count
+
+def split_merged_txt(merged_path, output_folder, encoding="utf-8"):
+    """แยกไฟล์รวมกลับเป็น .txt ตาม [PATH] markers"""
+    with open(merged_path, "r", encoding=encoding) as f:
+        content = f.read()
+
+    # ponytail: split on marker lines, simple state machine
+    pattern = re.compile(rf'^{re.escape(PATH_MARKER)}(.+?){re.escape(PATH_MARKER)}\s*$', re.MULTILINE)
+    splits = pattern.split(content)
+
+    # splits[0] = before first marker (usually empty), then alternating: filename, content
+    count = 0
+    os.makedirs(output_folder, exist_ok=True)
+    i = 1  # skip text before first marker
+    while i + 1 < len(splits):
+        fname = splits[i].strip()
+        body = splits[i + 1]
+        if fname:
+            fpath = os.path.join(output_folder, fname)
+            with open(fpath, "w", encoding=encoding, newline="\n") as f:
+                f.write(body.rstrip("\n") + "\n")
+            count += 1
+        i += 2
+    return count
+
+# ═══════════════════════════════════════════════════════════
+# Matcher logic
 # ═══════════════════════════════════════════════════════════
 
 def is_likely_garbled(text):
-    """ตรวจหาข้อความที่ encode ผิด (mojibake) เช่น Êä»à´ÍÃÝ"""
     if not text or len(text) < 3:
         return False
-
-    # กลุ่มอักขระที่พบบ่อยในข้อความเข้ารหัสผิด
-    # Latin Extended-A/B, IPA, spacing modifiers etc.
     garbled_ranges = [
-        (0x0080, 0x00FF),   # Latin-1 Supplement
-        (0x0100, 0x024F),   # Latin Extended-A/B
-        (0x02B0, 0x02FF),   # Spacing Modifiers
+        (0x0080, 0x00FF), (0x0100, 0x024F), (0x02B0, 0x02FF),
     ]
-
     garbled_count = 0
     total = len(text)
     for ch in text:
         cp = ord(ch)
-        # ข้ามช่องว่างและ punctuation ปกติ
         if ch.isspace() or cp < 128:
             continue
         for lo, hi in garbled_ranges:
             if lo <= cp <= hi:
                 garbled_count += 1
                 break
-
-    # ถ้ามีอักขระต้องสงสัยเกิน 25% ของความยาว → garbled
     ratio = garbled_count / max(total, 1)
     if ratio > 0.25:
         return True
-
-    # ตรวจจับแพทเทิร์น mojibake: มี extended Latin ปน ASCII ไม่มีช่องว่างปกติ
-    # เช่น "Êä»à´ÍÃÝ-áÁ¹" (อักษรประหลาดต่อเนื่องยาว)
     if garbled_count >= 5 and ratio > 0.15:
         return True
-
     return False
-
 
 def match_keys(base_dict, target_dict):
     result = OrderedDict()
@@ -233,21 +250,18 @@ def match_keys(base_dict, target_dict):
     return result, matched, unmatched, garbled_skip, len(base_dict)
 
 # ═══════════════════════════════════════════════════════════
-# GUI — CustomTkinter
+# GUI
 # ═══════════════════════════════════════════════════════════
 
 THEME_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "orange.json")
-
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme(THEME_FILE)
 
-# orange accent color (for progress bar tint, etc.)
 ACCENT      = "#FF8C42"
 ACCENT_DARK = "#FF6505"
 GREEN       = "#4ade80"
 YELLOW      = "#fbbf24"
 RED         = "#f87171"
-TEXT_TITLE  = "#DCE4EE"
 
 FONT_CARD   = ("Segoe UI", 12, "bold")
 FONT_MONO   = ("Cascadia Code", 10)
@@ -259,7 +273,7 @@ class KeyMatcherApp:
         self.root.geometry("1020x800")
         self.root.minsize(740, 580)
 
-        # state
+        # matcher state
         self.base_path = ctk.StringVar()
         self.target_path = ctk.StringVar()
         self.format_var = ctk.StringVar(value="txt")
@@ -271,11 +285,10 @@ class KeyMatcherApp:
         self.json_structure = ctk.StringVar(value="array")
         self.json_key_field = ctk.StringVar(value="id")
         self.json_val_field = ctk.StringVar(value="value")
-        self.json_src_field = ctk.StringVar(value="")  # source field (อ่านจาก target), ว่าง = ใช้ val_field
+        self.json_src_field = ctk.StringVar(value="")
         self.xml_item_tag = ctk.StringVar(value="string")
         self.xml_key_attr = ctk.StringVar(value="id")
         self.xml_val_attr = ctk.StringVar(value="#text")
-        # presets
         self._presets_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets.json")
         self._presets = self._load_presets()
         self.preset_var = ctk.StringVar(value="Auto")
@@ -290,12 +303,16 @@ class KeyMatcherApp:
         self._json_key_field = ""
         self._json_structure = ""
 
+        # split/join state
+        self.sj_folder = ctk.StringVar()
+        self.sj_merged = ctk.StringVar()
+        self.sj_output = ctk.StringVar()
+
         self._build_ui()
 
     # ── helpers ───────────────────────────────────────
 
     def _card(self, parent, title, **kwargs):
-        """สร้างการ์ด: CTkFrame พร้อม title label ด้านบน"""
         card = ctk.CTkFrame(parent, corner_radius=8, border_width=1, **kwargs)
         card.grid_columnconfigure(0, weight=1)
         if title:
@@ -303,23 +320,34 @@ class KeyMatcherApp:
             lbl.grid(row=0, column=0, sticky="w", padx=14, pady=(10, 4))
         return card
 
-    def _section_label(self, parent, text):
-        return ctk.CTkLabel(parent, text=text, font=("Segoe UI", 11),
-                            text_color=TEXT_TITLE).pack(anchor="w", padx=2, pady=(10, 2))
+    def _sep(self, parent):
+        ctk.CTkFrame(parent, width=1, height=18, fg_color=("gray60", "gray40")).pack(side="left", padx=8)
 
-    # ── build ─────────────────────────────────────────
+    # ── build UI ──────────────────────────────────────
 
     def _build_ui(self):
-        # root grid — scrollable main
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
 
-        main = ctk.CTkFrame(self.root, fg_color="transparent")
-        main.grid(row=0, column=0, sticky="nsew", padx=12, pady=(8, 8))
+        # tab view
+        self.tabview = ctk.CTkTabview(self.root)
+        self.tabview.grid(row=0, column=0, sticky="nsew", padx=10, pady=(8, 6))
+        self.tabview.add("🔑 Key Matcher")
+        self.tabview.add("📦 Split & Join")
+        self.tabview.set("🔑 Key Matcher")
+
+        self._build_matcher_tab(self.tabview.tab("🔑 Key Matcher"))
+        self._build_splitjoin_tab(self.tabview.tab("📦 Split & Join"))
+
+    # ── MATCHER TAB ───────────────────────────────────
+
+    def _build_matcher_tab(self, parent):
+        main = ctk.CTkFrame(parent, fg_color="transparent")
+        main.pack(fill="both", expand=True, padx=2, pady=2)
         main.grid_rowconfigure(5, weight=1)
         main.grid_columnconfigure(0, weight=1)
 
-        # ── header bar ──
+        # header bar
         hbar = ctk.CTkFrame(main, corner_radius=8, fg_color=("gray20", "gray10"))
         hbar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         hbar.grid_columnconfigure(1, weight=1)
@@ -331,20 +359,19 @@ class KeyMatcherApp:
                      font=("Segoe UI", 10),
                      text_color=("gray50", "gray60")).grid(row=0, column=1, padx=4, pady=12, sticky="w")
 
-        # dark/light switch
         self.theme_switch = ctk.CTkSwitch(
-            hbar, text="🌙  Dark",
-            command=self._toggle_theme,
+            hbar, text="🌙  Dark", command=self._toggle_theme,
             onvalue="dark", offvalue="light",
             variable=ctk.StringVar(value="dark"))
         self.theme_switch.grid(row=0, column=2, padx=(0, 14), pady=12)
-        self.theme_switch.select()  # start in dark mode
+        self.theme_switch.select()
 
-        # ── card: file selection ──
+        p4 = {"padx": 6, "pady": 4}
+
+        # card: file selection
         fcard = self._card(main, "📁  เลือกไฟล์")
         fcard.grid(row=1, column=0, sticky="ew", pady=(0, 6))
-        fcard.grid_columnconfigure(1, weight=1)  # entry column expands
-        p4 = {"padx": 6, "pady": 4}
+        fcard.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(fcard, text="Base (อ้างอิง key):", width=130, anchor="e").grid(row=1, column=0, sticky="e", **p4)
         ctk.CTkEntry(fcard, textvariable=self.base_path, height=34).grid(row=1, column=1, sticky="ew", **p4)
@@ -356,12 +383,11 @@ class KeyMatcherApp:
         ctk.CTkButton(fcard, text="📂 Browse", width=90, height=34,
                       command=self._browse_target).grid(row=2, column=2, padx=(6, 10), pady=4)
 
-        # ── card: format config ──
+        # card: format config
         self.config_card = self._card(main, "⚙  ตั้งค่ารูปแบบไฟล์")
         self.config_card.grid(row=2, column=0, sticky="ew", pady=(0, 6))
         self.config_card.grid_columnconfigure(6, weight=1)
 
-        # preset row
         ctk.CTkLabel(self.config_card, text="Game:").grid(row=1, column=0, sticky="w", padx=6, pady=(2, 0))
         self.preset_menu = ctk.CTkOptionMenu(self.config_card, variable=self.preset_var,
                           values=list(self._presets.keys()), width=200,
@@ -387,19 +413,18 @@ class KeyMatcherApp:
                           values=["utf-8", "utf-8-sig", "utf-16", "cp874", "tis-620", "latin-1"],
                           width=100).grid(row=2, column=5, sticky="w", **p4)
 
-        # dynamic sub-row
         self.dynamic_frame = ctk.CTkFrame(self.config_card, fg_color="transparent")
         self.dynamic_frame.grid(row=3, column=0, columnspan=6, sticky="ew", pady=(8, 2))
         self._update_config_panel()
 
-        # ── card: manual keys ──
+        # card: manual keys
         mcard = self._card(main, "✚  เพิ่ม Key เอง")
         mcard.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         mcard.grid_columnconfigure(0, weight=1)
         ctk.CTkEntry(mcard, textvariable=self.manual_keys,
                      placeholder_text="คั่นด้วย , ; หรือเว้นวรรค").grid(row=1, column=0, sticky="ew", padx=14, pady=(2, 10))
 
-        # ── action bar ──
+        # action bar
         abar = ctk.CTkFrame(main, fg_color="transparent")
         abar.grid(row=4, column=0, sticky="ew", pady=(0, 6))
         abar.grid_columnconfigure(3, weight=1)
@@ -422,7 +447,7 @@ class KeyMatcherApp:
                                         text_color=("gray50", "gray60"))
         self.stats_label.grid(row=0, column=3, sticky="w")
 
-        # ── card: preview ──
+        # card: preview
         pcard = self._card(main, "👁  Preview (50 บรรทัดแรก)")
         pcard.grid(row=5, column=0, sticky="nsew", pady=(0, 6))
         pcard.grid_rowconfigure(1, weight=1)
@@ -436,12 +461,163 @@ class KeyMatcherApp:
         self.preview_text.insert("0.0", "กด Match & Preview เพื่อดูผลลัพธ์\n")
         self.preview_text.configure(state="disabled")
 
-        # ── status bar ──
+        # status bar
         sbar = ctk.CTkFrame(main, corner_radius=4, fg_color=("gray90", "gray13"))
         sbar.grid(row=6, column=0, sticky="ew")
         self.status_label = ctk.CTkLabel(sbar, text="✅  พร้อมใช้งาน", font=("Segoe UI", 9),
                                          text_color=("gray50", "gray60"))
         self.status_label.pack(side="left", padx=14, pady=4)
+
+    # ── SPLIT & JOIN TAB ──────────────────────────────
+
+    def _build_splitjoin_tab(self, parent):
+        main = ctk.CTkFrame(parent, fg_color="transparent")
+        main.pack(fill="both", expand=True, padx=2, pady=2)
+        main.grid_rowconfigure(4, weight=1)
+        main.grid_columnconfigure(0, weight=1)
+
+        pad = {"padx": 6, "pady": 4}
+
+        # header
+        hbar = ctk.CTkFrame(main, corner_radius=8, fg_color=("gray20", "gray10"))
+        hbar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ctk.CTkLabel(hbar, text="📦  Split & Join — รวม/แยกไฟล์ .txt",
+                     font=("Segoe UI", 16, "bold"),
+                     text_color=ACCENT).grid(row=0, column=0, padx=18, pady=12, sticky="w")
+        ctk.CTkLabel(hbar, text="รวมไฟล์หลายไฟล์เป็นไฟล์เดียวเพื่อแปล แล้วแยกกลับ",
+                     font=("Segoe UI", 10),
+                     text_color=("gray50", "gray60")).grid(row=0, column=1, padx=4, pady=12, sticky="w")
+
+        # ── Merge section ──
+        mcard = self._card(main, "🧩  Merge — รวม .txt ทั้งโฟลเดอร์เป็นไฟล์เดียว")
+        mcard.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        mcard.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(mcard, text="Input folder:").grid(row=1, column=0, sticky="e", **pad)
+        ctk.CTkEntry(mcard, textvariable=self.sj_folder, height=34).grid(row=1, column=1, sticky="ew", **pad)
+        ctk.CTkButton(mcard, text="📂 Browse", width=90, height=34,
+                      command=self._browse_merge_folder).grid(row=1, column=2, padx=(6, 10), pady=4)
+
+        ctk.CTkLabel(mcard, text="Output file:").grid(row=2, column=0, sticky="e", **pad)
+        ctk.CTkEntry(mcard, textvariable=self.sj_merged, height=34).grid(row=2, column=1, sticky="ew", **pad)
+        ctk.CTkButton(mcard, text="📂 Save As", width=90, height=34,
+                      command=self._browse_merge_output).grid(row=2, column=2, padx=(6, 10), pady=4)
+
+        ctk.CTkButton(mcard, text="🔀  MERGE", width=140, height=34,
+                      font=("Segoe UI", 10, "bold"),
+                      command=self._do_merge).grid(row=3, column=1, pady=(4, 10))
+
+        # ── Split section ──
+        scard = self._card(main, "✂  Split — แยกไฟล์รวมกลับเป็น .txt")
+        scard.grid(row=2, column=0, sticky="ew", pady=(0, 6))
+        scard.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(scard, text="Merged file:").grid(row=1, column=0, sticky="e", **pad)
+        ctk.CTkEntry(scard, textvariable=self.sj_merged, height=34).grid(row=1, column=1, sticky="ew", **pad)
+        ctk.CTkButton(scard, text="📂 Browse", width=90, height=34,
+                      command=self._browse_split_input).grid(row=1, column=2, padx=(6, 10), pady=4)
+
+        ctk.CTkLabel(scard, text="Output folder:").grid(row=2, column=0, sticky="e", **pad)
+        ctk.CTkEntry(scard, textvariable=self.sj_output, height=34).grid(row=2, column=1, sticky="ew", **pad)
+        ctk.CTkButton(scard, text="📂 Browse", width=90, height=34,
+                      command=self._browse_split_output).grid(row=2, column=2, padx=(6, 10), pady=4)
+
+        ctk.CTkButton(scard, text="✂  SPLIT", width=140, height=34,
+                      font=("Segoe UI", 10, "bold"),
+                      command=self._do_split).grid(row=3, column=1, pady=(4, 10))
+
+        # ── preview area (shared) ──
+        pcard = self._card(main, "👁  Preview")
+        pcard.grid(row=4, column=0, sticky="nsew")
+        pcard.grid_rowconfigure(1, weight=1)
+        pcard.grid_columnconfigure(0, weight=1)
+
+        self.sj_preview = ctk.CTkTextbox(pcard, font=FONT_MONO,
+                                         fg_color=("gray10", "#11121d"),
+                                         text_color=("#d4d6e2", "#cdd6f4"),
+                                         wrap="word", activate_scrollbars=True)
+        self.sj_preview.grid(row=1, column=0, sticky="nsew", padx=14, pady=(2, 10))
+        self.sj_preview.insert("0.0", "เลือกโฟลเดอร์แล้วกด Merge หรือ Split เพื่อดูตัวอย่าง\n")
+        self.sj_preview.configure(state="disabled")
+
+        # status
+        sbar = ctk.CTkFrame(main, corner_radius=4, fg_color=("gray90", "gray13"))
+        sbar.grid(row=5, column=0, sticky="ew")
+        self.sj_status = ctk.CTkLabel(sbar, text="✅  พร้อมใช้งาน", font=("Segoe UI", 9),
+                                      text_color=("gray50", "gray60"))
+        self.sj_status.pack(side="left", padx=14, pady=4)
+
+    # ── Split & Join actions ──────────────────────────
+
+    def _browse_merge_folder(self):
+        path = filedialog.askdirectory(title="เลือกโฟลเดอร์ที่มี .txt")
+        if path:
+            self.sj_folder.set(path)
+            self.sj_status.configure(text=f"📁 {path}")
+
+    def _browse_merge_output(self):
+        path = filedialog.asksaveasfilename(
+            title="บันทึกไฟล์รวม", defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
+        if path:
+            self.sj_merged.set(path)
+
+    def _browse_split_input(self):
+        path = filedialog.askopenfilename(
+            title="เลือกไฟล์รวม", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
+        if path:
+            self.sj_merged.set(path)
+            self.sj_status.configure(text=f"📄 {os.path.basename(path)}")
+
+    def _browse_split_output(self):
+        path = filedialog.askdirectory(title="เลือกโฟลเดอร์ปลายทาง")
+        if path:
+            self.sj_output.set(path)
+
+    def _do_merge(self):
+        folder = self.sj_folder.get().strip()
+        out = self.sj_merged.get().strip()
+        if not folder or not out:
+            messagebox.showwarning("กรุณากรอกข้อมูล", "ต้องระบุทั้ง Input folder และ Output file")
+            return
+        if not os.path.isdir(folder):
+            messagebox.showerror("ไม่พบโฟลเดอร์", f"ไม่พบ: {folder}")
+            return
+        try:
+            n = merge_txt_folder(folder, out, self.encoding_var.get())
+            with open(out, "r", encoding=self.encoding_var.get()) as f:
+                preview = "".join(f.readlines()[:20])
+            self.sj_preview.configure(state="normal")
+            self.sj_preview.delete("0.0", "end")
+            self.sj_preview.insert("0.0", preview)
+            self.sj_preview.configure(state="disabled")
+            self.sj_status.configure(text=f"✅  Merge สำเร็จ: {n} ไฟล์ → {out}")
+            messagebox.showinfo("Merge สำเร็จ", f"รวมแล้ว {n} ไฟล์\n{out}")
+        except Exception as e:
+            messagebox.showerror("ผิดพลาด", str(e))
+
+    def _do_split(self):
+        merged = self.sj_merged.get().strip()
+        outdir = self.sj_output.get().strip()
+        if not merged or not outdir:
+            messagebox.showwarning("กรุณากรอกข้อมูล", "ต้องระบุทั้ง Merged file และ Output folder")
+            return
+        if not os.path.isfile(merged):
+            messagebox.showerror("ไม่พบไฟล์", f"ไม่พบ: {merged}")
+            return
+        try:
+            n = split_merged_txt(merged, outdir, self.encoding_var.get())
+            self.sj_preview.configure(state="normal")
+            self.sj_preview.delete("0.0", "end")
+            files = sorted(os.listdir(outdir))[:30]
+            self.sj_preview.insert("0.0", f"แยกแล้ว {n} ไฟล์:\n" + "\n".join(files))
+            if n > 30:
+                self.sj_preview.insert("end", f"\n... และอีก {n - 30} ไฟล์")
+            self.sj_preview.configure(state="disabled")
+            self.sj_status.configure(text=f"✅  Split สำเร็จ: {n} ไฟล์ → {outdir}")
+            messagebox.showinfo("Split สำเร็จ", f"แยกแล้ว {n} ไฟล์\n{outdir}")
+        except Exception as e:
+            messagebox.showerror("ผิดพลาด", str(e))
 
     # ── theme toggle ──────────────────────────────────
 
@@ -450,7 +626,7 @@ class KeyMatcherApp:
         ctk.set_appearance_mode(mode)
         self.theme_switch.configure(text="🌙  Dark" if mode == "dark" else "☀  Light")
 
-    # ── config panel ──────────────────────────────────
+    # ── presets ───────────────────────────────────────
 
     def _load_presets(self):
         if os.path.exists(self._presets_file):
@@ -459,7 +635,6 @@ class KeyMatcherApp:
                     return json.load(f)
             except Exception:
                 pass
-        # fallback defaults
         return {
             "Auto": {},
             "Crimson Desert (PALOC)": {
@@ -510,7 +685,6 @@ class KeyMatcherApp:
             dialog.destroy()
 
         ctk.CTkButton(dialog, text="Save", command=do_save).pack(pady=(8, 4))
-        name_var.trace_add("write", lambda *_: None)  # placeholder
         dialog.bind("<Return>", lambda e: do_save())
 
     def _apply_preset(self, choice):
@@ -529,21 +703,20 @@ class KeyMatcherApp:
             self.json_src_field.set(preset["src_field"])
         self._update_config_panel()
 
+    # ── matcher config panel ──────────────────────────
+
     def _update_config_panel(self):
         for w in self.dynamic_frame.winfo_children():
             w.destroy()
-
         fmt = self.format_var.get()
-
-        # ซ่อน/แสดง delimiter ตาม format
         if fmt in ("json", "xml"):
             self.delim_label.grid_remove()
             self.delim_combo.grid_remove()
         else:
             self.delim_label.grid()
             self.delim_combo.grid()
-        p = {"padx": 4, "pady": 2}
 
+        p = {"padx": 4, "pady": 2}
         if fmt == "txt":
             ctk.CTkLabel(self.dynamic_frame, text="Delimiter:").pack(side="left", **p)
             ctk.CTkComboBox(self.dynamic_frame, variable=self.delimiter_var,
@@ -551,7 +724,6 @@ class KeyMatcherApp:
                             width=100).pack(side="left", **p)
             ctk.CTkLabel(self.dynamic_frame, text="แยก key|value ด้วยตัวคั่นนี้",
                          font=("Segoe UI", 9), text_color=("gray40", "gray60")).pack(side="left", **p)
-
         elif fmt == "csv":
             ctk.CTkLabel(self.dynamic_frame, text="Delim:").pack(side="left", **p)
             ctk.CTkComboBox(self.dynamic_frame, variable=self.delimiter_var,
@@ -562,23 +734,20 @@ class KeyMatcherApp:
             ctk.CTkLabel(self.dynamic_frame, text="Value Col:").pack(side="left", **p)
             ctk.CTkEntry(self.dynamic_frame, textvariable=self.csv_val_col, width=42).pack(side="left", **p)
             self._sep(self.dynamic_frame)
-            ctk.CTkCheckBox(self.dynamic_frame, text="มี Header",
-                            variable=self.csv_has_header).pack(side="left", **p)
-
+            ctk.CTkCheckBox(self.dynamic_frame, text="มี Header", variable=self.csv_has_header).pack(side="left", **p)
         elif fmt == "json":
             ctk.CTkLabel(self.dynamic_frame, text="โครงสร้าง:").pack(side="left", **p)
             ctk.CTkOptionMenu(self.dynamic_frame, variable=self.json_structure,
                               values=["array", "object"], width=80).pack(side="left", **p)
             self._sep(self.dynamic_frame)
             ctk.CTkLabel(self.dynamic_frame, text="Key field:").pack(side="left", **p)
-            ctk.CTkEntry(self.dynamic_frame, textvariable=self.json_key_field, width=80).pack(side="left", **p)
+            ctk.CTkEntry(self.dynamic_frame, textvariable=self.json_key_field, width=60).pack(side="left", **p)
             ctk.CTkLabel(self.dynamic_frame, text="Value (write):").pack(side="left", **p)
             ctk.CTkEntry(self.dynamic_frame, textvariable=self.json_val_field, width=60).pack(side="left", **p)
             ctk.CTkLabel(self.dynamic_frame, text="Source (read):").pack(side="left", **p)
             ctk.CTkEntry(self.dynamic_frame, textvariable=self.json_src_field, width=60).pack(side="left", **p)
             ctk.CTkLabel(self.dynamic_frame, text="(src ว่าง = อ่านจาก value)",
                          font=("Segoe UI", 9), text_color=("gray40", "gray60")).pack(side="left", **p)
-
         elif fmt == "xml":
             ctk.CTkLabel(self.dynamic_frame, text="Item tag:").pack(side="left", **p)
             ctk.CTkEntry(self.dynamic_frame, textvariable=self.xml_item_tag, width=80).pack(side="left", **p)
@@ -586,9 +755,6 @@ class KeyMatcherApp:
             ctk.CTkEntry(self.dynamic_frame, textvariable=self.xml_key_attr, width=80).pack(side="left", **p)
             ctk.CTkLabel(self.dynamic_frame, text="Value attr (#text=เนื้อหา):").pack(side="left", **p)
             ctk.CTkEntry(self.dynamic_frame, textvariable=self.xml_val_attr, width=80).pack(side="left", **p)
-
-    def _sep(self, parent):
-        ctk.CTkFrame(parent, width=1, height=18, fg_color=("gray60", "gray40")).pack(side="left", padx=8)
 
     # ── browse ────────────────────────────────────────
 
@@ -634,7 +800,6 @@ class KeyMatcherApp:
     def _parse_file(self, path):
         fmt = self.format_var.get()
         enc = self.encoding_var.get()
-
         if fmt == "txt":
             return parse_txt(path, self.delimiter_var.get(), enc)
         elif fmt == "csv":
@@ -676,7 +841,6 @@ class KeyMatcherApp:
     def _do_match(self):
         base_path = self.base_path.get().strip()
         target_path = self.target_path.get().strip()
-
         if not base_path or not target_path:
             messagebox.showwarning("กรุณาเลือกไฟล์", "ต้องเลือกทั้งไฟล์ Base และ Target")
             return
@@ -694,10 +858,9 @@ class KeyMatcherApp:
 
         try:
             base_dict = self._parse_file(base_path)
-            # จับ _json_original จาก base เท่านั้น (target parse จะ overwrite)
             json_struct = getattr(self, '_json_original', None)
             target_dict = self._parse_file(target_path)
-            self._json_original = json_struct  # restore base structure
+            self._json_original = json_struct
 
             manual = self.manual_keys.get().strip()
             manual_added = 0
@@ -710,7 +873,6 @@ class KeyMatcherApp:
 
             merged, n_match, n_unmatch, n_garbled, n_total = match_keys(base_dict, target_dict)
             self.merged_data = merged
-
             pct = ((n_match + n_garbled) / n_total * 100) if n_total > 0 else 0
 
             self.progress.stop()
@@ -734,7 +896,6 @@ class KeyMatcherApp:
 
             self.stats_label.configure(text="  │  ".join(parts), text_color=color)
             self.progress.configure(progress_color=color)
-
             self.status_label.configure(text=f"✅  จับคู่แล้ว {n_match:,} keys — พร้อมบันทึก")
             self._show_preview(merged)
 
@@ -749,11 +910,9 @@ class KeyMatcherApp:
     def _show_preview(self, data):
         self.preview_text.configure(state="normal")
         self.preview_text.delete("0.0", "end")
-
         delimiter = self.delimiter_var.get()
         fmt = self.format_var.get()
         lines = list(data.items())
-
         for i, (key, val) in enumerate(lines):
             if i >= 50:
                 self.preview_text.insert("end",
@@ -763,7 +922,6 @@ class KeyMatcherApp:
                 self.preview_text.insert("end", f"{key}{delimiter}{val}\n")
             else:
                 self.preview_text.insert("end", f"{key}  →  {val}\n")
-
         self.preview_text.configure(state="disabled")
 
     # ── save ──────────────────────────────────────────
@@ -772,12 +930,10 @@ class KeyMatcherApp:
         if self.merged_data is None:
             messagebox.showwarning("ยังไม่มีข้อมูล", "กรุณากด Match & Preview ก่อน")
             return
-
         default_path = self._auto_output_path()
         fmt = self.format_var.get()
         ext_map = {"txt": ".txt", "csv": ".csv", "json": ".json", "xml": ".xml"}
         default_ext = ext_map.get(fmt, ".txt")
-
         path = filedialog.asksaveasfilename(
             title="บันทึกไฟล์ผลลัพธ์",
             initialfile=os.path.basename(default_path) if default_path else f"output{default_ext}",
@@ -786,9 +942,7 @@ class KeyMatcherApp:
             filetypes=[(f"{fmt.upper()} files", f"*{default_ext}"), ("All files", "*.*")])
         if not path:
             return
-
         enc = self.encoding_var.get()
-
         try:
             if fmt == "txt":
                 write_txt(self.merged_data, path, self.delimiter_var.get(), enc)
@@ -814,15 +968,12 @@ class KeyMatcherApp:
                                    key_attr=self.xml_key_attr.get(),
                                    val_attr=self.xml_val_attr.get(),
                                    encoding=enc)
-
             self.status_label.configure(text=f"💾  บันทึกแล้ว: {path}")
             messagebox.showinfo("บันทึกสำเร็จ",
-                                f"บันทึกแล้ว:\n{path}\n\n"
-                                f"📊 {len(self.merged_data):,} keys")
+                                f"บันทึกแล้ว:\n{path}\n\n📊 {len(self.merged_data):,} keys")
         except Exception as e:
             messagebox.showerror("บันทึกไม่สำเร็จ", f"{type(e).__name__}:\n{e}")
             self.status_label.configure(text=f"❌ บันทึกไม่สำเร็จ: {e}")
-
 
 # ═══════════════════════════════════════════════════════════
 
