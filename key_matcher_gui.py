@@ -200,7 +200,7 @@ def split_merged_txt(merged_path, output_folder, encoding="utf-8"):
         if fname:
             fpath = os.path.join(output_folder, fname)
             with open(fpath, "w", encoding=encoding, newline="\n") as f:
-                f.write(body.rstrip("\n") + "\n")
+                f.write(body.strip("\n") + "\n")
             count += 1
         i += 2
     return count
