@@ -24,22 +24,33 @@ def parse_txt(path, delimiter="|", encoding="utf-8", alt_lines=False):
         lines = [l.rstrip("\n\r") for l in f]
 
     if alt_lines:
-        # key/value alternating lines: *ID*\ntext\n*ID*\ntext\n...
-        # skip header if first line doesn't start with *
+        # key/value alternating lines: *ID*\nvalue\n*ID*\nvalue\n...
+        # also supports [[TAG]] lines as extra keys for the same value
+        # structure: *ID*\n[[TAG]]\ntext → both ID and TAG → same value
         i = 0
-        if lines and not lines[0].startswith("*"):
+        if lines and not (lines[0].startswith("*") or lines[0].startswith("[")):
             i = 1
         while i < len(lines):
-            # find next key line (starts with *)
-            while i < len(lines) and not lines[i].startswith("*"):
+            while i < len(lines) and not (lines[i].startswith("*") or lines[i].startswith("[")):
                 i += 1
             if i + 1 >= len(lines):
                 break
-            key = lines[i].strip().strip("*")
-            val = lines[i + 1]
-            if key:
-                result[key] = val
-            i += 2
+            # collect consecutive key lines (starts with * or [)
+            keys = []
+            while i < len(lines) and (lines[i].startswith("*") or lines[i].startswith("[")):
+                key_raw = lines[i].strip()
+                if key_raw.startswith("*"):
+                    keys.append(key_raw.strip("*"))
+                elif key_raw.startswith("[["):
+                    keys.append(key_raw.strip("[]"))
+                i += 1
+            # next line is the value
+            if i < len(lines):
+                val = lines[i]
+                for k in keys:
+                    if k:
+                        result[k] = val
+                i += 1
         return result
 
     # standard delimiter mode
