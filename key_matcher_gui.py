@@ -20,6 +20,7 @@ import re
 
 def parse_txt(path, delimiter="|", encoding="utf-8", alt_lines=False):
     result = OrderedDict()
+    alt_struct = None  # เก็บโครงสร้างบรรทัดสำหรับ alt-lines mode
     with open(path, "r", encoding=encoding) as f:
         lines = [l.rstrip("\n\r") for l in f]
 
@@ -27,22 +28,35 @@ def parse_txt(path, delimiter="|", encoding="utf-8", alt_lines=False):
         # key/value alternating lines: *ID*\nvalue\n*ID*\nvalue\n...
         # also supports [[TAG]] lines as extra keys for the same value
         # structure: *ID*\n[[TAG]]\ntext → both ID and TAG → same value
+        alt_struct = []  # {"type": "header"|"key"|"val", "text": ..., "keys": [...]}
         i = 0
         if lines and not (lines[0].startswith("*") or lines[0].startswith("[")):
+            alt_struct.append({"type": "header", "text": lines[0]})
             i = 1
         while i < len(lines):
+            start_i = i
             while i < len(lines) and not (lines[i].startswith("*") or lines[i].startswith("[")):
+                # stray line between entries
+                alt_struct.append({"type": "other", "text": lines[i]})
                 i += 1
             if i + 1 >= len(lines):
+                # leftover lines without value
+                while i < len(lines):
+                    alt_struct.append({"type": "other", "text": lines[i]})
+                    i += 1
                 break
             # collect consecutive key lines (starts with * or [)
             keys = []
             while i < len(lines) and (lines[i].startswith("*") or lines[i].startswith("[")):
                 key_raw = lines[i].strip()
                 if key_raw.startswith("*"):
-                    keys.append(key_raw.strip("*"))
+                    k = key_raw.strip("*")
                 elif key_raw.startswith("[["):
-                    keys.append(key_raw.strip("[]"))
+                    k = key_raw.strip("[]")
+                else:
+                    k = key_raw
+                keys.append(k)
+                alt_struct.append({"type": "key", "text": lines[i], "keys": [k]})
                 i += 1
             # next line is the value
             if i < len(lines):
@@ -50,8 +64,9 @@ def parse_txt(path, delimiter="|", encoding="utf-8", alt_lines=False):
                 for k in keys:
                     if k:
                         result[k] = val
+                alt_struct.append({"type": "val", "text": val, "keys": keys})
                 i += 1
-        return result
+        return result, alt_struct
 
     # standard delimiter mode
     for line in lines:
@@ -62,12 +77,28 @@ def parse_txt(path, delimiter="|", encoding="utf-8", alt_lines=False):
             result[line] = ""
         else:
             result[line[:idx]] = line[idx + len(delimiter):]
-    return result
+    return result, None
 
 def write_txt(data, path, delimiter="|", encoding="utf-8"):
     with open(path, "w", encoding=encoding, newline="") as f:
         for key, val in data.items():
             f.write(f"{key}{delimiter}{val}\n")
+
+
+def write_txt_alt(data, alt_struct, path, encoding="utf-8"):
+    """เขียน alt-lines format: คงโครงสร้างเดิม เปลี่ยนเฉพาะบรรทัด value"""
+    with open(path, "w", encoding=encoding, newline="\n") as f:
+        for item in alt_struct:
+            if item["type"] == "val":
+                # ใช้ค่าใหม่จาก merged data ถ้ามี (เอา key แรกสุด)
+                new_val = item["text"]
+                for k in item.get("keys", []):
+                    if k in data:
+                        new_val = data[k]
+                        break
+                f.write(new_val + "\n")
+            else:
+                f.write(item["text"] + "\n")
 
 def parse_csv_file(path, key_col=0, val_col=1, delimiter=",", has_header=True, encoding="utf-8"):
     result = OrderedDict()
@@ -322,6 +353,7 @@ class KeyMatcherApp:
         self.xml_key_attr = ctk.StringVar(value="id")
         self.xml_val_attr = ctk.StringVar(value="#text")
         self.txt_alt_lines = ctk.BooleanVar(value=False)
+        self._txt_alt_struct = None
         self._presets_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets.json")
         self._presets = self._load_presets()
         self.preset_var = ctk.StringVar(value="Auto")
@@ -835,8 +867,10 @@ class KeyMatcherApp:
         fmt = self.format_var.get()
         enc = self.encoding_var.get()
         if fmt == "txt":
-            return parse_txt(path, self.delimiter_var.get(), enc,
+            data, alt_struct = parse_txt(path, self.delimiter_var.get(), enc,
                            alt_lines=self.txt_alt_lines.get())
+            self._txt_alt_struct = alt_struct
+            return data
         elif fmt == "csv":
             return parse_csv_file(path,
                                   key_col=int(self.csv_key_col.get()),
@@ -894,8 +928,10 @@ class KeyMatcherApp:
         try:
             base_dict = self._parse_file(base_path)
             json_struct = getattr(self, '_json_original', None)
+            txt_alt_struct = getattr(self, '_txt_alt_struct', None)
             target_dict = self._parse_file(target_path)
             self._json_original = json_struct
+            self._txt_alt_struct = txt_alt_struct
 
             manual = self.manual_keys.get().strip()
             manual_added = 0
@@ -980,7 +1016,10 @@ class KeyMatcherApp:
         enc = self.encoding_var.get()
         try:
             if fmt == "txt":
-                write_txt(self.merged_data, path, self.delimiter_var.get(), enc)
+                if self.txt_alt_lines.get() and self._txt_alt_struct:
+                    write_txt_alt(self.merged_data, self._txt_alt_struct, path, enc)
+                else:
+                    write_txt(self.merged_data, path, self.delimiter_var.get(), enc)
             elif fmt == "csv":
                 write_csv_file(self.merged_data, path,
                                delimiter=self.delimiter_var.get(), encoding=enc)
