@@ -25,11 +25,16 @@ def parse_txt(path, delimiter="|", encoding="utf-8", alt_lines=False):
 
     if alt_lines:
         # key/value alternating lines: *ID*\ntext\n*ID*\ntext\n...
+        # skip header if first line doesn't start with *
         i = 0
-        # skip leading header line if it doesn't start with *
         if lines and not lines[0].startswith("*"):
             i = 1
-        while i + 1 < len(lines):
+        while i < len(lines):
+            # find next key line (starts with *)
+            while i < len(lines) and not lines[i].startswith("*"):
+                i += 1
+            if i + 1 >= len(lines):
+                break
             key = lines[i].strip().strip("*")
             val = lines[i + 1]
             if key:
