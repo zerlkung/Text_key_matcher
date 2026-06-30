@@ -18,18 +18,34 @@ import re
 # Parsers (key-value)
 # ═══════════════════════════════════════════════════════════
 
-def parse_txt(path, delimiter="|", encoding="utf-8"):
+def parse_txt(path, delimiter="|", encoding="utf-8", alt_lines=False):
     result = OrderedDict()
     with open(path, "r", encoding=encoding) as f:
-        for line in f:
-            line = line.rstrip("\n\r")
-            if not line.strip():
-                continue
-            idx = line.find(delimiter)
-            if idx == -1:
-                result[line] = ""
-            else:
-                result[line[:idx]] = line[idx + len(delimiter):]
+        lines = [l.rstrip("\n\r") for l in f]
+
+    if alt_lines:
+        # key/value alternating lines: *ID*\ntext\n*ID*\ntext\n...
+        i = 0
+        # skip leading header line if it doesn't start with *
+        if lines and not lines[0].startswith("*"):
+            i = 1
+        while i + 1 < len(lines):
+            key = lines[i].strip().strip("*")
+            val = lines[i + 1]
+            if key:
+                result[key] = val
+            i += 2
+        return result
+
+    # standard delimiter mode
+    for line in lines:
+        if not line.strip():
+            continue
+        idx = line.find(delimiter)
+        if idx == -1:
+            result[line] = ""
+        else:
+            result[line[:idx]] = line[idx + len(delimiter):]
     return result
 
 def write_txt(data, path, delimiter="|", encoding="utf-8"):
@@ -289,6 +305,7 @@ class KeyMatcherApp:
         self.xml_item_tag = ctk.StringVar(value="string")
         self.xml_key_attr = ctk.StringVar(value="id")
         self.xml_val_attr = ctk.StringVar(value="#text")
+        self.txt_alt_lines = ctk.BooleanVar(value=False)
         self._presets_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets.json")
         self._presets = self._load_presets()
         self.preset_var = ctk.StringVar(value="Auto")
@@ -722,8 +739,9 @@ class KeyMatcherApp:
             ctk.CTkComboBox(self.dynamic_frame, variable=self.delimiter_var,
                             values=["|", "=", ":", "\t", ",", " -> ", "custom..."],
                             width=100).pack(side="left", **p)
-            ctk.CTkLabel(self.dynamic_frame, text="แยก key|value ด้วยตัวคั่นนี้",
-                         font=("Segoe UI", 9), text_color=("gray40", "gray60")).pack(side="left", **p)
+            self._sep(self.dynamic_frame)
+            ctk.CTkCheckBox(self.dynamic_frame, text="Alt lines (*ID*\\ntext)",
+                            variable=self.txt_alt_lines).pack(side="left", **p)
         elif fmt == "csv":
             ctk.CTkLabel(self.dynamic_frame, text="Delim:").pack(side="left", **p)
             ctk.CTkComboBox(self.dynamic_frame, variable=self.delimiter_var,
@@ -801,7 +819,8 @@ class KeyMatcherApp:
         fmt = self.format_var.get()
         enc = self.encoding_var.get()
         if fmt == "txt":
-            return parse_txt(path, self.delimiter_var.get(), enc)
+            return parse_txt(path, self.delimiter_var.get(), enc,
+                           alt_lines=self.txt_alt_lines.get())
         elif fmt == "csv":
             return parse_csv_file(path,
                                   key_col=int(self.csv_key_col.get()),
